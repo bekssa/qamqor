@@ -3,7 +3,7 @@ import './styles/global.css'
 function App() {
 
   return (
-      <div className= "text-primary">
+      <div className= "text-primary font-primary font-medium">
         QAMQOR
       </div>
   )
