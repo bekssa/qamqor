@@ -1,0 +1,18 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-primary: #137AD6;
+  --color-q-green: #2C9C42;
+  --color-q-light: #E8F4FE;
+  --color-q-dark-text: #3A4F71;
+  --color-q-soft-blue: #0972CD33;
+}
+
+:root {
+    --primary-color: #137AD6;
+    --green-color: #2C9C42;
+    --light-blue: #E8F4FE;
+    --dark-blue-text: #3A4F71;
+    --primary-transparent: #0972CD33;
+}
+
