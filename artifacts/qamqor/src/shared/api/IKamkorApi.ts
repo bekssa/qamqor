@@ -11,6 +11,10 @@ export interface IKamkorApi {
     getVolunteers(): Promise<User[]>;
     getUserById(id: string): Promise<User | null>;
 
+    // Auth / Verification API
+    sendOtp(email: string): Promise<boolean>;
+    verifyOtp(email: string, code: string): Promise<{ user: User, token: string }>;
+
     // Reviews API
     getReviewsByUserId(userId: string): Promise<Review[]>;
     submitReview(data: Omit<Review, 'id' | 'createdAt'>): Promise<Review>;
