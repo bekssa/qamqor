@@ -1,0 +1,35 @@
+[
+  {
+    "id": 1,
+    "lastName": "Иванов",
+    "firstName": "Иван",
+    "email": "ivan@example.com",
+    "phone": "+77001234567",
+    "role": "seek-help",
+    "password": "password123",
+    "birthDate": "12.06.1960",
+    "city": "Астана"
+  },
+  {
+    "id": 2,
+    "lastName": "Сейткалиева",
+    "firstName": "Айгерим",
+    "email": "aigerim@example.com",
+    "phone": "+77771234567",
+    "role": "offer-help",
+    "password": "password123",
+    "birthDate": "23.03.1995",
+    "city": "Алматы"
+  },
+  {
+    "id": 3,
+    "lastName": "Петрова",
+    "firstName": "Светлана",
+    "email": "svetlana@example.com",
+    "phone": "+77012345678",
+    "role": "offer-help",
+    "password": "password123",
+    "birthDate": "15.07.1988",
+    "city": "Астана"
+  }
+]
