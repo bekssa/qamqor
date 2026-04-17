@@ -103,4 +103,18 @@ export class MockKamkorApi implements IKamkorApi {
         mockReviews.push(newReview);
         return newReview;
     }
+
+    async sendOtp(email: string): Promise<boolean> {
+        await delay();
+        console.log(`[МОК АПИ] 📧 Имитация отправки кода на почту ${email}. Реальная отправка будет после внедрения Spring Boot бэкенда.`);
+        return true;
+    }
+
+    async verifyOtp(email: string, code: string): Promise<{ user: User, token: string }> {
+        await delay();
+        if (code === "1234") {
+            return { token: "mock_token_abc123", user: mockUsers[0] };
+        }
+        throw new Error("Неверный СМС код");
+    }
 }

@@ -1,8 +1,20 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, Eye, EyeOff, ChevronDown } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, ChevronDown, CalendarIcon } from "lucide-react";
 import { useLanguage } from "@features/language/model/context";
 import { useAuth } from "@features/auth/model/context";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
+
+const KAZAKHSTAN_CITIES = [
+  "Алматы", "Астана", "Шымкент", "Караганда", "Актобе",
+  "Тараз", "Павлодар", "Усть-Каменогорск", "Семей", "Атырау",
+  "Костанай", "Кызылорда", "Уральск", "Петропавловск", "Актау",
+  "Темиртау", "Туркестан", "Кокшетау", "Талдыкорган", "Жезказган"
+];
 
 type Tab = "register" | "login";
 
@@ -159,7 +171,7 @@ export default function AuthPage() {
   const [loginForm, setLoginForm] = useState({ credential: "", password: "" });
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
   const lettersRegex = /^[a-zA-Zа-яА-ЯёЁәіңғүұқөҺ\s-]+$/u;
 
   const handlePhoneChange = (val: string) => {
@@ -178,6 +190,8 @@ export default function AuthPage() {
     else if (!emailRegex.test(reg.email)) errors.email = t("auth.emailInvalid");
     if (!reg.phone || reg.phone.length < 12) errors.phone = t("auth.phoneInvalid");
     if (!reg.role) errors.role = t("auth.required");
+    if (!reg.birthDate) errors.birthDate = t("auth.required");
+    if (!reg.city) errors.city = t("auth.required");
     if (!reg.password) errors.password = t("auth.required");
     else if (reg.password.length < 8) errors.password = t("auth.passwordMin");
     if (!reg.confirmPassword) errors.confirmPassword = t("auth.required");
@@ -308,24 +322,65 @@ export default function AuthPage() {
                 options={roleOptions}
               />
               <AuthInput
-                label={t("auth.birthDate")}
+                label={`${t("auth.birthDate")} *`}
                 placeholder={t("auth.birthDatePlaceholder")}
                 value={reg.birthDate}
                 onChange={(v) => {
-                  const d = v.replace(/\D/g,"").slice(0,8);
+                  const d = v.replace(/\D/g, "").slice(0, 8);
                   let fmt = d;
-                  if (d.length>2) fmt=`${d.slice(0,2)}.${d.slice(2)}`;
-                  if (d.length>4) fmt=`${d.slice(0,2)}.${d.slice(2,4)}.${d.slice(4)}`;
+                  if (d.length > 2) fmt = `${d.slice(0, 2)}.${d.slice(2)}`;
+                  if (d.length > 4) fmt = `${d.slice(0, 2)}.${d.slice(2, 4)}.${d.slice(4)}`;
                   setReg((p) => ({ ...p, birthDate: fmt }));
                 }}
                 maxLength={10}
+                error={regErrors.birthDate}
+                rightElement={
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="text-gray-400 hover:text-gray-600 transition-colors flex items-center justify-center p-1 pr-0">
+                        <CalendarIcon className="w-5 h-5" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="end">
+                      <Calendar
+                        mode="single"
+                        selected={reg.birthDate.length === 10 ? new Date(reg.birthDate.split('.').reverse().join('-')) : undefined}
+                        onSelect={(date) => {
+                          if (date) {
+                            const y = date.getFullYear();
+                            const m = String(date.getMonth() + 1).padStart(2, '0');
+                            const d = String(date.getDate()).padStart(2, '0');
+                            setReg((p) => ({ ...p, birthDate: `${d}.${m}.${y}` }));
+                          }
+                        }}
+                        initialFocus
+                        captionLayout="dropdown"
+                        fromYear={1900}
+                        toYear={new Date().getFullYear()}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                }
               />
-              <AuthInput
-                label={t("auth.city")}
-                placeholder={t("auth.cityPlaceholder")}
-                value={reg.city}
-                onChange={(v) => setReg((p) => ({ ...p, city: v }))}
-              />
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700">{t("auth.city")} *</label>
+                <Select value={reg.city} onValueChange={(v) => setReg((p) => ({ ...p, city: v }))}>
+                  <SelectTrigger
+                    className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all ${regErrors.city ? "border-red-400 bg-red-50" : "border-gray-200 bg-white hover:bg-gray-50 focus:border-blue-500"
+                      } shadow-none [&>span]:line-clamp-1`}
+                  >
+                    <SelectValue placeholder={t("auth.cityPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {KAZAKHSTAN_CITIES.map((city) => (
+                      <SelectItem key={city} value={city}>
+                        {city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {regErrors.city && <p className="text-xs text-red-500">{regErrors.city}</p>}
+              </div>
               <AuthInput
                 label={`${t("auth.setPassword")} *`}
                 placeholder={t("auth.passwordPlaceholder")}
@@ -363,9 +418,9 @@ export default function AuthPage() {
                   />
                   <span className="text-sm text-gray-600">
                     {t("auth.agreement")}{" "}
-                    <button type="button" className="text-blue-600 underline hover:text-blue-800">
+                    <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">
                       {t("auth.agreementLink")}
-                    </button>
+                    </a>
                   </span>
                 </label>
                 {regErrors.agreed && <p className="text-xs text-red-500">{regErrors.agreed}</p>}

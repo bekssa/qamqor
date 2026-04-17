@@ -6,6 +6,7 @@ import ForgotPasswordPage from "@pages/auth/forgot";
 import ResetPasswordPage from "@pages/auth/reset";
 import DashboardPage from "@pages/dashboard";
 import NotFound from "@pages/not-found";
+import TermsPage from "@pages/terms";
 
 export default function AppRouter() {
   return (
@@ -16,6 +17,7 @@ export default function AppRouter() {
       <Route path="/auth/forgot" component={ForgotPasswordPage} />
       <Route path="/auth/reset" component={ResetPasswordPage} />
       <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/terms" component={TermsPage} />
       <Route component={NotFound} />
     </Switch>
   );

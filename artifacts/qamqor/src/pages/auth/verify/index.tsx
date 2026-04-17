@@ -119,8 +119,8 @@ export default function SmsVerifyPage() {
         <div className="w-full max-w-md text-center">
           <QamqorLogo />
 
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">{t("auth.smsTitle")}</h1>
-          <p className="text-gray-500 text-sm mb-10">{t("auth.smsSent")}</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Подтверждение почты</h1>
+          <p className="text-gray-500 text-sm mb-10">Мы отправили письмо с кодом на вашу электронную почту.</p>
 
           <div className="flex justify-center gap-3 mb-8">
             {digits.map((digit, i) => (
