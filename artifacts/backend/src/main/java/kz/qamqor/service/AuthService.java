@@ -97,12 +97,12 @@ public class AuthService {
     private void sendEmail(String to, String code) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);
-        message.setSubject("Ваш код подтверждения — Qamqor");
+        message.setSubject("Confirm code — Qamqor");
         message.setText(
-            "Здравствуйте!\n\n" +
-            "Ваш код подтверждения: " + code + "\n\n" +
-            "Код действителен " + otpExpirationMinutes + " минут.\n\n" +
-            "Если вы не запрашивали этот код, проигнорируйте письмо."
+            "Hi!\n\n" +
+            "Authentication code: " + code + "\n\n" +
+            "The code valid till " + otpExpirationMinutes + " m.\n\n" +
+            "If you didn't request this code, keep ignore it."
         );
         mailSender.send(message);
     }
