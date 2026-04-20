@@ -76,11 +76,10 @@ services:
       JWT_SECRET:        ${JWT_SECRET:-qamqor-super-secret-key-change-in-production-min-32-chars}
       JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
       # Mail
-      MAIL_HOST:     ${MAIL_HOST:-smtp.mailersend.net}
+      MAIL_HOST:     ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT:     ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM:     ${MAIL_FROM:-}
       # CORS – allow both local dev port and production frontend
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173}
     ports:

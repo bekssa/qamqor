@@ -192,6 +192,14 @@ export class RealKamkorApi implements IKamkorApi {
         return this.fetchApi<ServiceRequest[]>('/requests/my');
     }
 
+    async getAssignedRequests(): Promise<ServiceRequest[]> {
+        return this.fetchApi<ServiceRequest[]>('/requests/assigned');
+    }
+
+    async getAvailableRequests(): Promise<ServiceRequest[]> {
+        return this.fetchApi<ServiceRequest[]>('/requests/available');
+    }
+
     async getRequestById(id: string): Promise<ServiceRequest | null> {
         return this.fetchApi<ServiceRequest | null>(`/requests/${id}`);
     }

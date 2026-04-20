@@ -26,12 +26,12 @@ public class ServiceRequestService {
     private final ServiceRequestRepository requestRepository;
     private final UserRepository userRepository;
 
-    public List<ServiceRequestDto> getAll() {
-        List<ServiceRequestDto> list = requestRepository.findAll().stream()
-            .map(ServiceRequestDto::from)
-            .toList();
-        log.debug("[REQUEST] getAll count={}", list.size());
-        return list;
+    public List<ServiceRequestDto> getAll(User currentUser) {
+        List<ServiceRequest> requests = (currentUser.getRole() == User.Role.VOLUNTEER)
+            ? requestRepository.findForVolunteer(currentUser.getId())
+            : requestRepository.findAll();
+        log.debug("[REQUEST] getAll role={} count={}", currentUser.getRole(), requests.size());
+        return requests.stream().map(ServiceRequestDto::from).toList();
     }
 
     public ServiceRequestDto getById(String id) {
@@ -65,6 +65,16 @@ public class ServiceRequestService {
 
     public List<ServiceRequestDto> getMyRequests(User currentUser) {
         return requestRepository.findAllByAuthorId(currentUser.getId())
+            .stream().map(ServiceRequestDto::from).toList();
+    }
+
+    public List<ServiceRequestDto> getAssignedRequests(User currentUser) {
+        return requestRepository.findAllByExecutorId(currentUser.getId())
+            .stream().map(ServiceRequestDto::from).toList();
+    }
+
+    public List<ServiceRequestDto> getAvailableRequests(User currentUser) {
+        return requestRepository.findForVolunteer(currentUser.getId())
             .stream().map(ServiceRequestDto::from).toList();
     }
 

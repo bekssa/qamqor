@@ -34,14 +34,26 @@ public class ServiceRequestController {
         responses = @ApiResponse(responseCode = "200", description = "Список заявок")
     )
     @GetMapping
-    public ResponseEntity<List<ServiceRequestDto>> list() {
-        return ResponseEntity.ok(service.getAll());
+    public ResponseEntity<List<ServiceRequestDto>> list(@AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(service.getAll(currentUser));
     }
 
-    @Operation(summary = "Получить мои заявки")
+    @Operation(summary = "Получить мои заявки (как автор)")
     @GetMapping("/my")
     public ResponseEntity<List<ServiceRequestDto>> getMyRequests(@AuthenticationPrincipal User currentUser) {
         return ResponseEntity.ok(service.getMyRequests(currentUser));
+    }
+
+    @Operation(summary = "Заявки, которые я принял (волонтёр-исполнитель)")
+    @GetMapping("/assigned")
+    public ResponseEntity<List<ServiceRequestDto>> getAssignedRequests(@AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(service.getAssignedRequests(currentUser));
+    }
+
+    @Operation(summary = "Доступные заявки по моим категориям")
+    @GetMapping("/available")
+    public ResponseEntity<List<ServiceRequestDto>> getAvailableRequests(@AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(service.getAvailableRequests(currentUser));
     }
 
     @Operation(

@@ -31,7 +31,6 @@ import imgShopping from "@/assets/services/shopping.png";
 
 import imgUserPhoto from "@assets/Ellipse_374_1776245458894.png";
 import imgQamqor from "@assets/Rectangle_240662641_1776245382727.png";
-import imgHelperAvatar from "@assets/image_1776248251802.png";
 
 const GREEN = "#2C9C42";
 const BLUE = "#3B82F6";
@@ -1028,10 +1027,11 @@ function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
   );
 }
 
-/* ─────────────── helper dashboard (offer-help role) ─────────────── */
+/* ─────────────── helper dashboard (volunteer role) ─────────────── */
 interface HelperRequest {
-  id: number;
+  id: string;
   name: string;
+  avatarUrl: string | null;
   serviceLabel: string;
   description: string;
   price: string;
@@ -1040,20 +1040,30 @@ interface HelperRequest {
   address: string;
 }
 
-const HELPER_ACTIVE: HelperRequest[] = [
-  { id: 1, name: "Лидия Абдешева", serviceLabel: "Сопровождение", description: "Необходимо съездить со мной в больницу к врачу, помочь с оформлением документов", price: "4000", dateCreated: "18 июня 2026 года", dateExecution: "20 июня 2026 года", address: "Сыганак 41" },
-];
+const HELPER_SERVICE_LABELS: Record<string, string> = {
+  household: "Бытовые услуги", medical: "Медицинская помощь",
+  escort: "Сопровождение", homework: "Домашние работы", shopping: "Покупки",
+};
 
-const AVAILABLE_REQS: HelperRequest[] = [
-  { id: 11, name: "Лидия Абдешева", serviceLabel: "Сопровождение", description: "Необходимо съездить со мной в больницу к врачу, помочь с оформлением документов", price: "4000", dateCreated: "18 июня 2026 года", dateExecution: "20 июня 2026 года", address: "Сыганак 41" },
-  { id: 12, name: "Лидия Абдешева", serviceLabel: "Сопровождение", description: "Необходимо съездить со мной в больницу к врачу, помочь с оформлением документов", price: "4000", dateCreated: "18 июня 2026 года", dateExecution: "20 июня 2026 года", address: "Сыганак 41" },
-  { id: 13, name: "Лидия Абдешева", serviceLabel: "Сопровождение", description: "Необходимо съездить со мной в больницу к врачу, помочь с оформлением документов", price: "4000", dateCreated: "18 июня 2026 года", dateExecution: "20 июня 2026 года", address: "Сыганак 41" },
-  { id: 14, name: "Лидия Абдешева", serviceLabel: "Сопровождение", description: "Необходимо съездить со мной в больницу к врачу, помочь с оформлением документов", price: "4000", dateCreated: "18 июня 2026 года", dateExecution: "20 июня 2026 года", address: "Сыганак 41" },
-];
+function mapHelperRequest(r: any): HelperRequest {
+  const d = new Date(r.createdAt);
+  const dateCreated = `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
+  return {
+    id: String(r.id),
+    name: r.authorName || "Пользователь",
+    avatarUrl: r.authorAvatarUrl ?? null,
+    serviceLabel: HELPER_SERVICE_LABELS[r.category ?? ""] ?? r.title ?? "",
+    description: r.description ?? "",
+    price: r.price != null ? String(r.price) : "",
+    dateCreated,
+    dateExecution: r.scheduledDate ?? "",
+    address: r.location ?? "",
+  };
+}
 
 function HelperReqTable({ reqs, onComplete }: {
   reqs: HelperRequest[];
-  onComplete?: (id: number) => void;
+  onComplete?: (id: string) => void;
 }) {
   const { t } = useLanguage();
   const COLS = [t("dashboard.colDescription"), t("dashboard.colDateReg"), t("dashboard.colDateExec"), t("dashboard.colPrice"), t("dashboard.colAddress")];
@@ -1092,7 +1102,13 @@ function HelperReqTable({ reqs, onComplete }: {
             <tr key={req.id} className="hover:bg-gray-50 transition-colors">
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-start gap-2.5">
-                  <img src={imgHelperAvatar} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0"/>
+                  {req.avatarUrl
+                    ? <img src={req.avatarUrl} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0"/>
+                    : <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                        style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
+                        {req.name.substring(0, 1).toUpperCase()}
+                      </div>
+                  }
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800 text-xs leading-tight">{req.name}</p>
                     <p className="text-[10px] text-gray-400 leading-tight mb-0.5">↳ {req.serviceLabel}</p>
@@ -1125,8 +1141,8 @@ function HelperReqTable({ reqs, onComplete }: {
 function HelperAvailableTable({ reqs }: { reqs: HelperRequest[] }) {
   const { t } = useLanguage();
   const COLS = [t("dashboard.colDescription"), t("dashboard.colDateReg"), t("dashboard.colDateExec"), t("dashboard.colPrice"), t("dashboard.colAddress")];
-  const [accepted, setAccepted] = useState<number[]>([]);
-  const [rejected, setRejected] = useState<number[]>([]);
+  const [accepted, setAccepted] = useState<string[]>([]);
+  const [rejected, setRejected] = useState<string[]>([]);
 
   const visible = reqs.filter(r => !rejected.includes(r.id));
 
@@ -1157,7 +1173,13 @@ function HelperAvailableTable({ reqs }: { reqs: HelperRequest[] }) {
             <tr key={req.id} className="hover:bg-gray-50 transition-colors">
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-start gap-2.5">
-                  <img src={imgHelperAvatar} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0"/>
+                  {req.avatarUrl
+                    ? <img src={req.avatarUrl} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0"/>
+                    : <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                        style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
+                        {req.name.substring(0, 1).toUpperCase()}
+                      </div>
+                  }
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800 text-xs leading-tight">{req.name}</p>
                     <p className="text-[10px] text-gray-400 leading-tight mb-0.5">↳ {req.serviceLabel}</p>
@@ -1197,11 +1219,17 @@ function HelperAvailableTable({ reqs }: { reqs: HelperRequest[] }) {
 
 function HelperDashboard({ user }: { user: { firstName: string } }) {
   const { t } = useLanguage();
-  const [activeReqs, setActiveReqs] = useState<HelperRequest[]>(HELPER_ACTIVE);
-  const [completingId, setCompletingId] = useState<number | null>(null);
+  const [activeReqs, setActiveReqs] = useState<HelperRequest[]>([]);
+  const [availableReqs, setAvailableReqs] = useState<HelperRequest[]>([]);
+  const [completingId, setCompletingId] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
 
-  const handleComplete = (id: number) => setCompletingId(id);
+  useEffect(() => {
+    api.getAssignedRequests().then(list => setActiveReqs(list.map(mapHelperRequest))).catch(() => {});
+    api.getAvailableRequests().then(list => setAvailableReqs(list.map(mapHelperRequest))).catch(() => {});
+  }, []);
+
+  const handleComplete = (id: string) => setCompletingId(id);
   const handleSubmitCompletion = () => {
     setActiveReqs(r => r.filter(x => x.id !== completingId));
     setCompletingId(null);
@@ -1211,7 +1239,7 @@ function HelperDashboard({ user }: { user: { firstName: string } }) {
     <div className="space-y-4">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4">
         <p className="font-bold text-gray-800 text-sm">Добро пожаловать, {user.firstName}!</p>
-        <p className="text-xs text-gray-500 mt-0.5">Сегодня в вашем регионе поступило <span className="font-semibold text-gray-700">12</span> новых запросов. Готовы помочь?</p>
+        <p className="text-xs text-gray-500 mt-0.5">Доступных заявок по вашим категориям: <span className="font-semibold text-gray-700">{availableReqs.length}</span>. Готовы помочь?</p>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1243,7 +1271,7 @@ function HelperDashboard({ user }: { user: { firstName: string } }) {
             )}
           </div>
         </div>
-        <HelperAvailableTable reqs={AVAILABLE_REQS}/>
+        <HelperAvailableTable reqs={availableReqs}/>
       </div>
 
       {completingId !== null && (
@@ -2677,7 +2705,7 @@ function DashboardContent({ activeNav, userId, userRole, firstName, openedChatId
             ))}
           </div>
         </div>
-        {activeTab==="create"        && (userRole==="offer-help" ? <HelperDashboard user={{firstName}}/> : <CreateRequestTab userId={userId}/>)}
+        {activeTab==="create"        && (isVolunteer ? <HelperDashboard user={{firstName}}/> : <CreateRequestTab userId={userId}/>)}
         {activeTab==="search"        && <FindHelpersTab userId={userId}/>}
         {activeTab==="notifications" && <NotificationsTab/>}
         {activeTab==="settings"      && <AccountSettingsTab onDirtyChange={handleDirtyChange} settingsSaveRef={settingsSaveRef}/>}

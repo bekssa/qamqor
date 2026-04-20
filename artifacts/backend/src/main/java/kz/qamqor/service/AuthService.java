@@ -57,10 +57,10 @@ public class AuthService {
 
         String code = generateCode();
         OtpCode otp = OtpCode.builder()
-            .email(email)
-            .code(code)
-            .expiresAt(Instant.now().plus(otpExpirationMinutes, ChronoUnit.MINUTES))
-            .build();
+                .email(email)
+                .code(code)
+                .expiresAt(Instant.now().plus(otpExpirationMinutes, ChronoUnit.MINUTES))
+                .build();
         otpCodeRepository.save(otp);
         log.debug("[AUTH] OTP saved, expires in {} min, email={}", otpExpirationMinutes, email);
 
@@ -80,11 +80,11 @@ public class AuthService {
         log.info("[AUTH] verify-otp attempt for email={}", email);
 
         OtpCode otp = otpCodeRepository
-            .findTopByEmailAndUsedFalseAndExpiresAtAfterOrderByCreatedAtDesc(email, Instant.now())
-            .orElseThrow(() -> {
-                log.warn("[AUTH] OTP not found or expired for email={}", email);
-                return new AppException("OTP not found or expired", HttpStatus.BAD_REQUEST);
-            });
+                .findTopByEmailAndUsedFalseAndExpiresAtAfterOrderByCreatedAtDesc(email, Instant.now())
+                .orElseThrow(() -> {
+                    log.warn("[AUTH] OTP not found or expired for email={}", email);
+                    return new AppException("OTP not found or expired", HttpStatus.BAD_REQUEST);
+                });
 
         if (!otp.getCode().equals(request.code())) {
             log.warn("[AUTH] Invalid OTP code for email={}", email);
@@ -99,15 +99,15 @@ public class AuthService {
             String fullName = buildFullName(request.firstName(), request.lastName());
             User.Role resolvedRole = resolveRole(request.role());
             User.UserBuilder builder = User.builder()
-                .email(email)
-                .name(fullName)
-                .firstName(request.firstName())
-                .lastName(request.lastName())
-                .phone(request.phone())
-                .birthDate(request.birthDate())
-                .city(request.city())
-                .role(resolvedRole)
-                .verified(true);
+                    .email(email)
+                    .name(fullName)
+                    .firstName(request.firstName())
+                    .lastName(request.lastName())
+                    .phone(request.phone())
+                    .birthDate(request.birthDate())
+                    .city(request.city())
+                    .role(resolvedRole)
+                    .verified(true);
             if (request.password() != null && !request.password().isBlank()) {
                 builder.passwordHash(passwordEncoder.encode(request.password()));
             }

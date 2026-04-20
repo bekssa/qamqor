@@ -57,6 +57,16 @@ export class MockKamkorApi implements IKamkorApi {
         return [...mockRequests];
     }
 
+    async getAssignedRequests(): Promise<ServiceRequest[]> {
+        await delay();
+        return mockRequests.filter(r => r.executorId === 'u1');
+    }
+
+    async getAvailableRequests(): Promise<ServiceRequest[]> {
+        await delay();
+        return mockRequests.filter(r => r.status === 'open');
+    }
+
     async getRequestById(id: string): Promise<ServiceRequest | null> {
         await delay();
         return mockRequests.find(r => r.id === id) || null;

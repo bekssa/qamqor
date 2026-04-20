@@ -4,6 +4,8 @@ export interface IKamkorApi {
     // Requests API
     getRequests(): Promise<ServiceRequest[]>;
     getMyRequests(): Promise<ServiceRequest[]>;
+    getAssignedRequests(): Promise<ServiceRequest[]>;
+    getAvailableRequests(): Promise<ServiceRequest[]>;
     getRequestById(id: string): Promise<ServiceRequest | null>;
     createRequest(data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status' | 'authorId' | 'executorId'>): Promise<ServiceRequest>;
     updateRequestStatus(id: string, status: ServiceRequest['status']): Promise<ServiceRequest>;

@@ -18,7 +18,7 @@ spring:
         format_sql: true
 
   mail:
-    host: ${MAIL_HOST:smtp.mailersend.net}
+    host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
@@ -30,7 +30,7 @@ spring:
             enable: true
             required: true
           ssl:
-            trust: smtp.mailersend.net
+            trust: ${MAIL_HOST:smtp.gmail.com}
           connectiontimeout: 10000
           timeout: 10000
           writetimeout: 10000

@@ -18,6 +18,8 @@ export interface ServiceRequest {
     title: string;
     description: string;
     authorId: string;
+    authorName?: string;
+    authorAvatarUrl?: string;
     executorId?: string;
     status: RequestStatus;
     createdAt: string;
