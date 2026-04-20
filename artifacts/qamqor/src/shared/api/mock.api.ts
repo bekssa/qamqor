@@ -52,16 +52,22 @@ export class MockKamkorApi implements IKamkorApi {
         return [...mockRequests];
     }
 
+    async getMyRequests(): Promise<ServiceRequest[]> {
+        await delay();
+        return [...mockRequests];
+    }
+
     async getRequestById(id: string): Promise<ServiceRequest | null> {
         await delay();
         return mockRequests.find(r => r.id === id) || null;
     }
 
-    async createRequest(data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status'>): Promise<ServiceRequest> {
+    async createRequest(data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status' | 'authorId' | 'executorId'>): Promise<ServiceRequest> {
         await delay();
         const newRequest: ServiceRequest = {
             ...data,
             id: `req${Date.now()}`,
+            authorId: 'u1',
             status: 'open',
             createdAt: new Date().toISOString(),
         };

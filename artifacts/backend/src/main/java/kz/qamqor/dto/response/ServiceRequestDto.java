@@ -13,6 +13,8 @@ public record ServiceRequestDto(
     String status,
     String category,
     String location,
+    Integer price,
+    String scheduledDate,
     Instant createdAt
 ) {
     public static ServiceRequestDto from(ServiceRequest r) {
@@ -25,6 +27,8 @@ public record ServiceRequestDto(
             r.getStatus().name().toLowerCase(),
             r.getCategory(),
             r.getLocation(),
+            r.getPrice(),
+            r.getScheduledDate(),
             r.getCreatedAt()
         );
     }

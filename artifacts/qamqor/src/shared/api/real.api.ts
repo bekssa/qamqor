@@ -188,11 +188,15 @@ export class RealKamkorApi implements IKamkorApi {
         return this.fetchApi<ServiceRequest[]>('/requests');
     }
 
+    async getMyRequests(): Promise<ServiceRequest[]> {
+        return this.fetchApi<ServiceRequest[]>('/requests/my');
+    }
+
     async getRequestById(id: string): Promise<ServiceRequest | null> {
         return this.fetchApi<ServiceRequest | null>(`/requests/${id}`);
     }
 
-    async createRequest(data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status'>): Promise<ServiceRequest> {
+    async createRequest(data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status' | 'authorId' | 'executorId'>): Promise<ServiceRequest> {
         return this.fetchApi<ServiceRequest>('/requests', {
             method: 'POST',
             body: JSON.stringify(data),
@@ -202,7 +206,7 @@ export class RealKamkorApi implements IKamkorApi {
     async updateRequestStatus(id: string, status: ServiceRequest['status']): Promise<ServiceRequest> {
         return this.fetchApi<ServiceRequest>(`/requests/${id}/status`, {
             method: 'PATCH',
-            body: JSON.stringify({ status }),
+            body: JSON.stringify({ status: status.toUpperCase() }),
         });
     }
 

@@ -23,6 +23,8 @@ export interface ServiceRequest {
     createdAt: string;
     category: string;
     location: string;
+    price?: number;
+    scheduledDate?: string;
 }
 
 export interface Review {

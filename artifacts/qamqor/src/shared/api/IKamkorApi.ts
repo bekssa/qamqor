@@ -3,8 +3,9 @@ import { User, ServiceRequest, Review } from './types';
 export interface IKamkorApi {
     // Requests API
     getRequests(): Promise<ServiceRequest[]>;
+    getMyRequests(): Promise<ServiceRequest[]>;
     getRequestById(id: string): Promise<ServiceRequest | null>;
-    createRequest(data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status'>): Promise<ServiceRequest>;
+    createRequest(data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status' | 'authorId' | 'executorId'>): Promise<ServiceRequest>;
     updateRequestStatus(id: string, status: ServiceRequest['status']): Promise<ServiceRequest>;
 
     // Users / Volunteers API

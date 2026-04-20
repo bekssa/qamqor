@@ -43,7 +43,7 @@ type TabKey = "create" | "search" | "notifications" | "settings";
 type RequestStatus = "active" | "completed" | "cancelled";
 
 interface ServiceRequest {
-  id: number;
+  id: string;
   serviceKey: string;
   serviceLabel: string;
   description: string;
@@ -56,38 +56,28 @@ interface ServiceRequest {
   status?: RequestStatus;
 }
 
-const STORAGE_KEY = (userId: string | number) => `qamqor-requests-v2-${userId}`;
-
-const SEED_REQUESTS: ServiceRequest[] = [
-  { id: 1,  serviceKey: "escort",    serviceLabel: "Сопровождение",   description: "Сходить в аптеку за лекарствами", price: "4000", dateCreated: "18.06.2026", dateExecution: "20.06.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "active" },
-  { id: 2,  serviceKey: "escort",    serviceLabel: "Сопровождение",   description: "Сходить в аптеку за лекарствами", price: "4000", dateCreated: "18.06.2026", dateExecution: "20.06.2026", address: "ул. Абая 50", helper: "",               status: "active" },
-  { id: 3,  serviceKey: "household", serviceLabel: "Бытовые услуги",  description: "Уборка, приготовление еды",       price: "3500", dateCreated: "18.06.2026", dateExecution: "20.06.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "active" },
-  { id: 4,  serviceKey: "homework",  serviceLabel: "Домашние работы", description: "Починить стул",                  price: "5000", dateCreated: "18.06.2026", dateExecution: "20.06.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "active" },
-  { id: 5,  serviceKey: "escort",    serviceLabel: "Сопровождение",   description: "Сходить в аптеку за лекарствами", price: "4000", dateCreated: "10.05.2026", dateExecution: "12.05.2026", address: "ул. Ленина 10", helper: "Умбеталиев Али", status: "completed" },
-  { id: 6,  serviceKey: "escort",    serviceLabel: "Сопровождение",   description: "Поход в больницу",               price: "4000", dateCreated: "10.05.2026", dateExecution: "12.05.2026", address: "ул. Ленина 10", helper: "",               status: "completed" },
-  { id: 7,  serviceKey: "escort",    serviceLabel: "Сопровождение",   description: "Прогулка в парке",               price: "4000", dateCreated: "01.04.2026", dateExecution: "03.04.2026", address: "пр. Республики 5", helper: "Умбеталиев Али", status: "completed" },
-  { id: 8,  serviceKey: "homework",  serviceLabel: "Домашние работы", description: "Починить стул",                  price: "5000", dateCreated: "01.04.2026", dateExecution: "03.04.2026", address: "пр. Республики 5", helper: "Умбеталиев Али", status: "completed" },
-  { id: 9,  serviceKey: "escort",    serviceLabel: "Сопровождение",   description: "Сходить в аптеку за лекарствами", price: "4000", dateCreated: "15.03.2026", dateExecution: "16.03.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "cancelled" },
-  { id: 10, serviceKey: "homework",  serviceLabel: "Домашние работы", description: "Починить стул",                  price: "5000", dateCreated: "15.03.2026", dateExecution: "16.03.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "cancelled" },
-];
-
 const SERVICE_IMG: Record<string, string> = {
   household: imgHousehold, medical: imgMedical, escort: imgEscort, homework: imgHomeWork, shopping: imgShopping,
 };
 
-function loadRequests(userId: string | number): ServiceRequest[] {
-  try {
-    const s = localStorage.getItem(STORAGE_KEY(userId));
-    if (s) {
-      const parsed: ServiceRequest[] = JSON.parse(s);
-      return parsed.map(r => ({ ...r, status: r.status ?? "active" }));
-    }
-  } catch { /**/ }
-  localStorage.setItem(STORAGE_KEY(userId), JSON.stringify(SEED_REQUESTS));
-  return SEED_REQUESTS;
-}
-function saveRequests(userId: string | number, reqs: ServiceRequest[]) {
-  localStorage.setItem(STORAGE_KEY(userId), JSON.stringify(reqs));
+function mapBackendRequest(r: { id: string; title: string; description: string; category: string; location: string; price?: number; scheduledDate?: string; status: string; createdAt: string }): ServiceRequest {
+  const d = new Date(r.createdAt);
+  const dateCreated = `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
+  const statusMap: Record<string, RequestStatus> = { open: "active", in_progress: "active", completed: "completed", cancelled: "cancelled" };
+  const serviceLabels: Record<string, string> = { household: "Бытовые услуги", medical: "Медицинская помощь", escort: "Сопровождение", homework: "Домашние работы", shopping: "Покупки" };
+  return {
+    id: r.id,
+    serviceKey: r.category ?? "household",
+    serviceLabel: serviceLabels[r.category ?? ""] ?? r.title,
+    description: r.description ?? "",
+    price: r.price != null ? String(r.price) : "",
+    dateCreated,
+    dateExecution: r.scheduledDate ?? "",
+    address: r.location ?? "",
+    city: "",
+    helper: "",
+    status: statusMap[r.status] ?? "active",
+  };
 }
 
 function getTodayStr() {
@@ -674,7 +664,7 @@ function SuccessModal({ onClose }: { onClose: () => void }) {
 }
 
 /* ─────────────── create-request tab ─────────────── */
-function CreateRequestTab({ userId }: { userId:number }) {
+function CreateRequestTab({ userId: _userId }: { userId:string }) {
   const { t } = useLanguage();
   const [selectedService, setSelectedService] = useState("");
   const [description, setDescription] = useState("");
@@ -684,9 +674,16 @@ function CreateRequestTab({ userId }: { userId:number }) {
   const [city, setCity] = useState("");
   const [showAddressPicker, setShowAddressPicker] = useState(false);
   const [errors, setErrors] = useState<Record<string,string>>({});
-  const [requests, setRequests] = useState<ServiceRequest[]>(()=>loadRequests(userId));
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editingReq, setEditingReq] = useState<ServiceRequest | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  useEffect(() => {
+    api.getMyRequests().then(list => {
+      setRequests(list.map(mapBackendRequest));
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
 
   const services = [
     {key:"household",img:imgHousehold,title:t("dashboard.serviceHousehold"),desc:t("dashboard.serviceHouseholdDesc")},
@@ -710,13 +707,24 @@ function CreateRequestTab({ userId }: { userId:number }) {
     return e;
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const errs = validate(); setErrors(errs);
     if (Object.keys(errs).length) return;
-    const newReq: ServiceRequest = {id:Date.now(),serviceKey:selectedService,serviceLabel:sel?.title??selectedService,description,price,dateCreated:getTodayStr(),dateExecution:date,address,city,helper:"",status:"active"};
-    const updated=[newReq,...requests]; setRequests(updated); saveRequests(userId,updated);
-    setSelectedService(""); setDescription(""); setPrice(""); setDate(""); setAddress(""); setCity(""); setErrors({});
-    setShowSuccess(true);
+    try {
+      const created = await api.createRequest({
+        title: sel?.title ?? selectedService,
+        description,
+        category: selectedService,
+        location: address,
+        price: price ? parseInt(price, 10) : undefined,
+        scheduledDate: date,
+      });
+      setRequests(prev => [mapBackendRequest(created as any), ...prev]);
+      setSelectedService(""); setDescription(""); setPrice(""); setDate(""); setAddress(""); setCity(""); setErrors({});
+      setShowSuccess(true);
+    } catch (e) {
+      console.error("createRequest failed:", e);
+    }
   };
 
   return (
@@ -858,9 +866,7 @@ function CreateRequestTab({ userId }: { userId:number }) {
           services={services}
           onClose={() => setEditingReq(null)}
           onSave={(updated) => {
-            const next = requests.map(r => r.id === updated.id ? updated : r);
-            setRequests(next);
-            saveRequests(userId, next);
+            setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
             setEditingReq(null);
           }}
         />
@@ -1379,7 +1385,7 @@ function RequestsTable({
   emptyText,
 }: {
   requests: ServiceRequest[];
-  onCancel?: (id: number) => void;
+  onCancel?: (id: string) => void;
   emptyText: string;
 }) {
   const COLS = ["Наименование", "Дата регистрации", "Дата выполнения услуг", "Цена", "Помощник"];
@@ -1467,17 +1473,24 @@ function RequestsTable({
   );
 }
 
-function MyRequestsContent({ userId }: { userId: number }) {
-  const [requests, setRequests] = useState<ServiceRequest[]>(() => loadRequests(userId));
+function MyRequestsContent({ userId: _userId }: { userId: string }) {
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+
+  useEffect(() => {
+    api.getMyRequests().then(list => setRequests(list.map(mapBackendRequest))).catch(() => {});
+  }, []);
 
   const active    = requests.filter(r => (r.status ?? "active") === "active");
   const completed = requests.filter(r => r.status === "completed");
   const cancelled = requests.filter(r => r.status === "cancelled");
 
-  const handleCancel = (id: number) => {
-    const updated = requests.map(r => r.id === id ? { ...r, status: "cancelled" as RequestStatus } : r);
-    setRequests(updated);
-    saveRequests(userId, updated);
+  const handleCancel = async (id: string) => {
+    try {
+      await api.updateRequestStatus(id, "cancelled");
+      setRequests(prev => prev.map(r => r.id === id ? { ...r, status: "cancelled" as RequestStatus } : r));
+    } catch (e) {
+      console.error("cancel failed:", e);
+    }
   };
 
   const Section = ({
@@ -1799,7 +1812,7 @@ function HelperRequestForm({ helper, onBack }: { helper: MockHelper; onBack: () 
   );
 }
 
-function FindHelpersTab({ userId }: { userId: number }) {
+function FindHelpersTab({ userId: _userId }: { userId: string }) {
   const [query, setQuery] = useState("");
   const [cityFilter, setCityFilter] = useState<"all" | "almaty" | "astana">("all");
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
@@ -1807,8 +1820,13 @@ function FindHelpersTab({ userId }: { userId: number }) {
   const [showSelectReq, setShowSelectReq] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [view, setView] = useState<"grid" | "form">("grid");
+  const [myRequests, setMyRequests] = useState<ServiceRequest[]>([]);
 
-  const activeWithNoHelper = loadRequests(userId).filter(r=>(r.status??"active")==="active"&&!r.helper);
+  useEffect(() => {
+    api.getMyRequests().then(list => setMyRequests(list.map(mapBackendRequest))).catch(() => {});
+  }, []);
+
+  const activeWithNoHelper = myRequests.filter(r=>(r.status??"active")==="active"&&!r.helper);
 
   const filtered = MOCK_HELPERS.filter(h=>{
     const q=query.toLowerCase();
@@ -2576,7 +2594,7 @@ function ComingSoon() {
 /* ─────────────── main content area ─────────────── */
 function DashboardContent({ activeNav, userId, userRole, firstName, openedChatId, setOpenedChatId, onSettingsDirtyChange, settingsSaveRef }: {
   activeNav: NavKey;
-  userId: number;
+  userId: string;
   userRole: string;
   firstName: string;
   openedChatId: number | null;

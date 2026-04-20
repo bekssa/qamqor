@@ -10,10 +10,12 @@ import jakarta.validation.Valid;
 import kz.qamqor.dto.request.CreateServiceRequestDto;
 import kz.qamqor.dto.request.UpdateStatusRequest;
 import kz.qamqor.dto.response.ServiceRequestDto;
+import kz.qamqor.entity.User;
 import kz.qamqor.service.ServiceRequestService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -34,6 +36,12 @@ public class ServiceRequestController {
     @GetMapping
     public ResponseEntity<List<ServiceRequestDto>> list() {
         return ResponseEntity.ok(service.getAll());
+    }
+
+    @Operation(summary = "Получить мои заявки")
+    @GetMapping("/my")
+    public ResponseEntity<List<ServiceRequestDto>> getMyRequests(@AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(service.getMyRequests(currentUser));
     }
 
     @Operation(
@@ -63,8 +71,11 @@ public class ServiceRequestController {
         }
     )
     @PostMapping
-    public ResponseEntity<ServiceRequestDto> create(@Valid @RequestBody CreateServiceRequestDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(dto));
+    public ResponseEntity<ServiceRequestDto> create(
+        @Valid @RequestBody CreateServiceRequestDto dto,
+        @AuthenticationPrincipal User currentUser
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(dto, currentUser));
     }
 
     @Operation(

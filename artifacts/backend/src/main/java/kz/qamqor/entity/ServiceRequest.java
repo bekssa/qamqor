@@ -36,6 +36,8 @@ public class ServiceRequest {
 
     private String category;
     private String location;
+    private Integer price;
+    private String scheduledDate;
 
     @CreationTimestamp
     private Instant createdAt;

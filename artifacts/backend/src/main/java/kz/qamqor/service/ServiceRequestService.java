@@ -40,15 +40,12 @@ public class ServiceRequestService {
     }
 
     @Transactional
-    public ServiceRequestDto create(CreateServiceRequestDto dto) {
-        log.info("[REQUEST] create authorId={} title='{}' category={} location={}",
-            dto.authorId(), dto.title(), dto.category(), dto.location());
+    public ServiceRequestDto create(CreateServiceRequestDto dto, User currentUser) {
+        log.info("[REQUEST] create authorId={} title='{}' category={} location={} price={} scheduledDate={}",
+            currentUser.getId(), dto.title(), dto.category(), dto.location(), dto.price(), dto.scheduledDate());
 
-        User author = userRepository.findById(dto.authorId())
-            .orElseThrow(() -> {
-                log.warn("[REQUEST] Author not found authorId={}", dto.authorId());
-                return new AppException("Author not found", HttpStatus.NOT_FOUND);
-            });
+        User author = userRepository.findById(currentUser.getId())
+            .orElseThrow(() -> new AppException("Author not found", HttpStatus.NOT_FOUND));
 
         ServiceRequest request = ServiceRequest.builder()
             .title(dto.title())
@@ -56,12 +53,19 @@ public class ServiceRequestService {
             .author(author)
             .category(dto.category())
             .location(dto.location())
+            .price(dto.price())
+            .scheduledDate(dto.scheduledDate())
             .status(ServiceRequest.Status.OPEN)
             .build();
 
         ServiceRequestDto result = ServiceRequestDto.from(requestRepository.save(request));
-        log.info("[REQUEST] Created id={} authorId={} status=OPEN", result.id(), dto.authorId());
+        log.info("[REQUEST] Created id={} authorId={} status=OPEN", result.id(), author.getId());
         return result;
+    }
+
+    public List<ServiceRequestDto> getMyRequests(User currentUser) {
+        return requestRepository.findAllByAuthorId(currentUser.getId())
+            .stream().map(ServiceRequestDto::from).toList();
     }
 
     @Transactional
