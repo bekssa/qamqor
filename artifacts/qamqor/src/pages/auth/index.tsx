@@ -150,7 +150,7 @@ function RoleSelect({
 export default function AuthPage() {
   const [, navigate] = useLocation();
   const { t } = useLanguage();
-  const { login, setPendingUser, setFlow } = useAuth();
+  const { sendOtp, setPendingUser, setFlow, loginWithPassword } = useAuth();
 
   const [tab, setTab] = useState<Tab>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -168,8 +168,9 @@ export default function AuthPage() {
   });
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
 
-  const [loginForm, setLoginForm] = useState({ credential: "", password: "" });
+  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
   const lettersRegex = /^[a-zA-Zа-яА-ЯёЁәіңғүұқөҺ\s-]+$/u;
@@ -202,13 +203,13 @@ export default function AuthPage() {
 
   const validateLogin = () => {
     const errors: Record<string, string> = {};
-    if (!loginForm.credential.trim()) errors.credential = t("auth.required");
+    if (!loginForm.email.trim()) errors.email = t("auth.required");
+    else if (!emailRegex.test(loginForm.email)) errors.email = t("auth.emailInvalid");
     if (!loginForm.password) errors.password = t("auth.required");
-    else if (loginForm.password.length < 8) errors.password = t("auth.passwordMin");
     return errors;
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError("");
     const errors = validateRegister();
@@ -225,21 +226,26 @@ export default function AuthPage() {
       city: reg.city || undefined,
     });
     setFlow("register");
+    const ok = await sendOtp(reg.email);
+    if (!ok) {
+      setSubmitError("Не удалось отправить код. Проверьте email и попробуйте снова.");
+      return;
+    }
     navigate("/auth/verify");
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError("");
     const errors = validateLogin();
     setLoginErrors(errors);
     if (Object.keys(errors).length > 0) return;
-    const ok = login(loginForm.credential, loginForm.password);
-    if (!ok) {
-      setSubmitError(t("auth.invalidCredentials"));
-      return;
+    try {
+      await loginWithPassword(loginForm.email, loginForm.password);
+      navigate("/dashboard");
+    } catch {
+      setSubmitError("Неверный email или пароль.");
     }
-    navigate("/dashboard");
   };
 
   const roleOptions = [
@@ -439,42 +445,27 @@ export default function AuthPage() {
             </form>
           ) : (
             <form onSubmit={handleLoginSubmit} className="flex flex-col gap-4" noValidate>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-gray-700">{t("auth.enterCredential")}</label>
-                <input
-                  type="text"
-                  placeholder={t("auth.credentialPlaceholder")}
-                  value={loginForm.credential}
-                  onChange={(e) => setLoginForm((p) => ({ ...p, credential: e.target.value }))}
-                  className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all
-                    ${loginErrors.credential ? "border-red-400 bg-red-50" : "border-gray-200 bg-white focus:border-blue-500"}
-                  `}
-                />
-                {loginErrors.credential && <p className="text-xs text-red-500">{loginErrors.credential}</p>}
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-gray-700">{t("auth.enterPassword")}</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    placeholder={t("auth.passwordPlaceholder")}
-                    value={loginForm.password}
-                    onChange={(e) => setLoginForm((p) => ({ ...p, password: e.target.value }))}
-                    className={`w-full px-4 py-3 pr-12 rounded-xl border text-sm outline-none transition-all
-                      ${loginErrors.password ? "border-red-400 bg-red-50" : "border-gray-200 bg-white focus:border-blue-500"}
-                    `}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              <AuthInput
+                label={t("auth.email")}
+                placeholder={t("auth.emailPlaceholder")}
+                value={loginForm.email}
+                onChange={(v) => setLoginForm((p) => ({ ...p, email: v }))}
+                error={loginErrors.email}
+                type="email"
+              />
+              <AuthInput
+                label={t("auth.password") || "Пароль"}
+                placeholder={t("auth.passwordPlaceholder") || "Введите пароль"}
+                value={loginForm.password}
+                onChange={(v) => setLoginForm((p) => ({ ...p, password: v }))}
+                error={loginErrors.password}
+                type={showLoginPassword ? "text" : "password"}
+                rightElement={
+                  <button type="button" onClick={() => setShowLoginPassword((v) => !v)} className="text-gray-400 hover:text-gray-600">
+                    {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
-                </div>
-                {loginErrors.password && <p className="text-xs text-red-500">{loginErrors.password}</p>}
-              </div>
+                }
+              />
 
               {submitError && (
                 <p className="text-sm text-red-500 text-center bg-red-50 rounded-lg py-2 px-4">{submitError}</p>
@@ -484,18 +475,8 @@ export default function AuthPage() {
                 type="submit"
                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors mt-2 shadow-md shadow-blue-200"
               >
-                {t("auth.loginBtn")}
+                {t("auth.login") || "Войти"}
               </button>
-
-              <div className="text-center mt-2">
-                <button
-                  type="button"
-                  onClick={() => navigate("/auth/forgot")}
-                  className="text-sm text-gray-500 hover:text-blue-600 transition-colors underline"
-                >
-                  {t("auth.forgotPassword")}
-                </button>
-              </div>
             </form>
           )}
         </div>

@@ -6,6 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
@@ -21,8 +22,14 @@ public class User {
     private String email;
 
     private String name;
+    private String firstName;
+    private String lastName;
     private String phone;
+    @Column(columnDefinition = "TEXT")
     private String avatarUrl;
+    private String passwordHash;
+    private String birthDate;
+    private String city;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -36,6 +43,14 @@ public class User {
 
     @UpdateTimestamp
     private Instant updatedAt;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "user_categories",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "category_key")
+    )
+    private List<Category> categories = new ArrayList<>();
 
     @OneToMany(mappedBy = "author", fetch = FetchType.LAZY)
     private List<Review> writtenReviews;

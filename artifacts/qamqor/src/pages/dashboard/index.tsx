@@ -21,6 +21,7 @@ import { useAuth } from "@features/auth/model/context";
 import { useLanguage } from "@features/language/model/context";
 import { useAccessibility } from "@features/accessibility/model/context";
 import AuthGuard from "@app/guards/auth-guard";
+import { api } from "@shared/api";
 
 import imgHousehold from "@/assets/services/household.png";
 import imgMedical from "@/assets/services/medical.png";
@@ -55,7 +56,7 @@ interface ServiceRequest {
   status?: RequestStatus;
 }
 
-const STORAGE_KEY = (userId: number) => `qamqor-requests-v2-${userId}`;
+const STORAGE_KEY = (userId: string | number) => `qamqor-requests-v2-${userId}`;
 
 const SEED_REQUESTS: ServiceRequest[] = [
   { id: 1,  serviceKey: "escort",    serviceLabel: "Сопровождение",   description: "Сходить в аптеку за лекарствами", price: "4000", dateCreated: "18.06.2026", dateExecution: "20.06.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "active" },
@@ -74,7 +75,7 @@ const SERVICE_IMG: Record<string, string> = {
   household: imgHousehold, medical: imgMedical, escort: imgEscort, homework: imgHomeWork, shopping: imgShopping,
 };
 
-function loadRequests(userId: number): ServiceRequest[] {
+function loadRequests(userId: string | number): ServiceRequest[] {
   try {
     const s = localStorage.getItem(STORAGE_KEY(userId));
     if (s) {
@@ -85,7 +86,7 @@ function loadRequests(userId: number): ServiceRequest[] {
   localStorage.setItem(STORAGE_KEY(userId), JSON.stringify(SEED_REQUESTS));
   return SEED_REQUESTS;
 }
-function saveRequests(userId: number, reqs: ServiceRequest[]) {
+function saveRequests(userId: string | number, reqs: ServiceRequest[]) {
   localStorage.setItem(STORAGE_KEY(userId), JSON.stringify(reqs));
 }
 
@@ -237,9 +238,9 @@ function AccessibilityToggle() {
 }
 
 /* ─────────────── user card ─────────────── */
-function UserCard({ user }: { user: { firstName:string;lastName:string;email:string;phone:string;role:string;birthDate?:string;city?:string } }) {
+function UserCard({ user }: { user: { firstName:string;lastName:string;email:string;phone:string;role:string;birthDate?:string;city?:string;avatarUrl?:string } }) {
   const { t } = useLanguage();
-  const initials = `${user.firstName[0]??""}${user.lastName[0]??""}`.toUpperCase();
+  const initials = `${user.firstName?.[0]??""}${user.lastName?.[0]??""}`.toUpperCase();
   const roleLabel = user.role==="seek-help" ? t("dashboard.roleSeekHelp") : t("dashboard.roleOfferHelp");
   const rows = [
     {label:t("dashboard.userRole"),  value:roleLabel},
@@ -252,10 +253,13 @@ function UserCard({ user }: { user: { firstName:string;lastName:string;email:str
     <div className="px-3 pt-4 pb-2">
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex items-center gap-2.5 px-3 py-3">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
-            style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
-            {initials}
-          </div>
+          {user.avatarUrl
+            ? <img src={user.avatarUrl} className="w-11 h-11 rounded-full object-cover shrink-0" alt="avatar"/>
+            : <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
+                style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
+                {initials}
+              </div>
+          }
           <p className="font-bold text-gray-900 text-sm leading-tight truncate">{user.lastName} {user.firstName}</p>
         </div>
         <div className="border-t border-gray-100 mx-3"/>
@@ -276,7 +280,7 @@ function UserCard({ user }: { user: { firstName:string;lastName:string;email:str
 function Sidebar({ activeNav, setActiveNav, user }: {
   activeNav: NavKey;
   setActiveNav: (k:NavKey) => void;
-  user: { firstName:string;lastName:string;email:string;phone:string;role:string;birthDate?:string;city?:string };
+  user: { firstName:string;lastName:string;email:string;phone:string;role:string;birthDate?:string;city?:string;avatarUrl?:string };
 }) {
   const { t } = useLanguage();
   const { logout } = useAuth();
@@ -2281,7 +2285,7 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
   onDirtyChange: (dirty:boolean)=>void;
   settingsSaveRef: React.MutableRefObject<(()=>void)|null>;
 }) {
-  const { currentUser, updateProfile, logout } = useAuth();
+  const { currentUser, updateProfile, uploadAvatar, deleteAvatar, updateCategories, deleteAccount, logout } = useAuth();
   if (!currentUser) return null;
   const u = currentUser;
 
@@ -2292,10 +2296,13 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
   const [phone,        setPhone]        = useState(u.phone);
   const [city,         setCity]         = useState(u.city ?? "almaty");
   const [role,         setRole]         = useState(u.role);
-  const [categories,   setCategories]   = useState<string[]>(u.role==="offer-help" ? ["shopping","household","medical"] : []);
+  const [categories,   setCategories]   = useState<string[]>(u.categories ?? []);
   const [emailEditing, setEmailEditing] = useState(false);
   const [phoneEditing, setPhoneEditing] = useState(false);
-  const [avatarSrc,    setAvatarSrc]    = useState<string|null>(null);
+  const [avatarSrc,  setAvatarSrc]  = useState<string|null>(u.avatarUrl ?? null);
+  const [avatarFile, setAvatarFile] = useState<File|null>(null);
+  const [saving,       setSaving]       = useState(false);
+  const [saveError,    setSaveError]    = useState<string|null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [showPasswordModal,  setShowPasswordModal]  = useState(false);
   const [showCategoryModal,  setShowCategoryModal]  = useState(false);
@@ -2304,7 +2311,7 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
   const initRef = useRef({
     firstName: u.firstName, lastName: u.lastName, email: u.email,
     phone: u.phone, city: u.city ?? "almaty", role: u.role,
-    categories: (u.role==="offer-help" ? ["shopping","household","medical"] : []).join(","),
+    categories: (u.categories ?? []).join(","),
   });
 
   const isDirty =
@@ -2314,14 +2321,26 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
     phone     !== initRef.current.phone     ||
     city      !== initRef.current.city      ||
     role      !== initRef.current.role      ||
+    avatarFile !== null                     ||
     (role==="offer-help" && categories.join(",") !== initRef.current.categories);
 
   useEffect(() => { onDirtyChange(isDirty); }, [firstName,lastName,email,phone,city,role,categories]);
 
-  settingsSaveRef.current = () => {
-    updateProfile({ firstName, lastName, email, phone, city, role });
-    initRef.current = { firstName, lastName, email, phone, city, role, categories: categories.join(",") };
-    onDirtyChange(false);
+  settingsSaveRef.current = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (avatarFile) await uploadAvatar(avatarFile);
+      await updateProfile({ firstName, lastName, email, phone, city, role });
+      await updateCategories(categories);
+      setAvatarFile(null);
+      initRef.current = { firstName, lastName, email, phone, city, role, categories: categories.join(",") };
+      onDirtyChange(false);
+    } catch {
+      setSaveError("Не удалось сохранить. Попробуйте ещё раз.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSave = () => { settingsSaveRef.current?.(); };
@@ -2367,13 +2386,22 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center gap-3">
             <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/gif" className="hidden"
-              onChange={e=>{ if(e.target.files?.[0]) setAvatarSrc(URL.createObjectURL(e.target.files[0])); }}/>
+              onChange={e=>{
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setAvatarFile(file);
+                setAvatarSrc(URL.createObjectURL(file));
+              }}/>
             <button onClick={()=>avatarInputRef.current?.click()}
               className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white rounded-xl hover:opacity-90 transition-opacity"
               style={{background:BLUE}}>
               + Изменить изображение
             </button>
-            <button onClick={()=>setAvatarSrc(null)}
+            <button onClick={async()=>{
+                setAvatarSrc(null);
+                setAvatarFile(null);
+                try { await deleteAvatar(); } catch {}
+              }}
               className="px-4 py-2 text-xs font-semibold rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
               Удалить изображение
             </button>
@@ -2482,11 +2510,14 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
           </div>
         </div>
 
+        {saveError && (
+          <p className="text-xs text-red-500 text-right">{saveError}</p>
+        )}
         <div className="flex justify-end">
-          <button onClick={handleSave} disabled={!isDirty}
+          <button onClick={handleSave} disabled={!isDirty || saving}
             className="px-6 py-2.5 text-xs font-bold text-white rounded-xl transition-opacity"
-            style={{background:isDirty?GREEN:"#9CA3AF", cursor:isDirty?"pointer":"not-allowed", opacity:isDirty?1:0.7}}>
-            сохранить
+            style={{background:(isDirty&&!saving)?GREEN:"#9CA3AF", cursor:(isDirty&&!saving)?"pointer":"not-allowed", opacity:(isDirty&&!saving)?1:0.7}}>
+            {saving ? "Сохраняем..." : "сохранить"}
           </button>
         </div>
       </div>
@@ -2525,7 +2556,9 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
 
       {showPasswordModal  && <PasswordResetModal onClose={()=>setShowPasswordModal(false)}/>}
       {showCategoryModal  && <CategoryPickerModal selected={categories} onToggle={k=>setCategories(p=>p.includes(k)?p.filter(c=>c!==k):[...p,k])} onClose={()=>setShowCategoryModal(false)}/>}
-      {showDeleteModal    && <DeleteAccountModal onClose={()=>setShowDeleteModal(false)} onConfirm={()=>{logout();}}/>}
+      {showDeleteModal    && <DeleteAccountModal onClose={()=>setShowDeleteModal(false)} onConfirm={async()=>{
+        try { await deleteAccount(); } catch { logout(); }
+      }}/>}
     </div>
   );
 }

@@ -21,7 +21,7 @@ const QamqorLogo = () => (
 export default function ForgotPasswordPage() {
   const [, navigate] = useLocation();
   const { t } = useLanguage();
-  const { checkUserExists, setFlow, setResetTarget } = useAuth();
+  const { checkUserExists, setFlow, setResetTarget, sendOtp } = useAuth();
 
   const [credential, setCredential] = useState("");
   const [error, setError] = useState("");
@@ -54,7 +54,7 @@ export default function ForgotPasswordPage() {
     setSubmitError("");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const validationError = validateCredential(credential);
     if (validationError) {
@@ -67,6 +67,10 @@ export default function ForgotPasswordPage() {
     }
     setResetTarget(credential);
     setFlow("forgot");
+    // sendOtp works only with email; phone-based reset is not supported by backend
+    if (emailRegex.test(credential)) {
+      await sendOtp(credential);
+    }
     navigate("/auth/verify");
   };
 

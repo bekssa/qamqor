@@ -104,17 +104,70 @@ export class MockKamkorApi implements IKamkorApi {
         return newReview;
     }
 
+    async deleteAvatar() {
+        await delay();
+        return { user: { ...mockUsers[0], avatarUrl: undefined, firstName: 'Анна', lastName: 'Иванова', birthDate: undefined, city: undefined, categories: [] } };
+    }
+
+    async updateUserCategories(keys: string[]) {
+        await delay();
+        return { user: { ...mockUsers[0], firstName: 'Анна', lastName: 'Иванова', birthDate: undefined, city: undefined, categories: keys } };
+    }
+
+    async getCategories() {
+        await delay();
+        return [
+            { key: 'household', label: 'Бытовая помощь',    description: 'уборка, приготовление еды' },
+            { key: 'medical',   label: 'Медицинская помощь', description: 'покупка лекарств, сопровождение' },
+            { key: 'escort',    label: 'Сопровождение',      description: 'поход в больницу, прогулка' },
+            { key: 'homework',  label: 'Домашние работы',    description: 'починка, мелкий ремонт' },
+            { key: 'shopping',  label: 'Покупки',            description: 'продукты, хозяйственные товары' },
+        ];
+    }
+
+    async deleteAccount(): Promise<void> {
+        await delay();
+    }
+
+    async getMe() {
+        await delay();
+        return { user: { ...mockUsers[0], firstName: 'Анна', lastName: 'Иванова', birthDate: undefined, city: undefined } };
+    }
+
+    async uploadAvatar(_file: File) {
+        await delay();
+        return { user: { ...mockUsers[0], firstName: 'Анна', lastName: 'Иванова', birthDate: undefined, city: undefined } };
+    }
+
+    async updateUserProfile(data: {
+        firstName?: string; lastName?: string; phone?: string;
+        city?: string; role?: string;
+    }) {
+        await delay();
+        const updated = { ...mockUsers[0], ...data, name: `${data.lastName ?? ''} ${data.firstName ?? ''}`.trim() };
+        mockUsers[0] = updated;
+        return { user: { ...updated, birthDate: undefined, city: data.city } };
+    }
+
     async sendOtp(email: string): Promise<boolean> {
         await delay();
         console.log(`[МОК АПИ] 📧 Имитация отправки кода на почту ${email}. Реальная отправка будет после внедрения Spring Boot бэкенда.`);
         return true;
     }
 
-    async verifyOtp(email: string, code: string): Promise<{ user: User, token: string }> {
+    async verifyOtp(email: string, code: string, _password?: string, _regData?: {
+        firstName?: string; lastName?: string; phone?: string;
+        role?: string; birthDate?: string; city?: string;
+    }): Promise<{ user: User, token: string }> {
         await delay();
         if (code === "1234") {
             return { token: "mock_token_abc123", user: mockUsers[0] };
         }
         throw new Error("Неверный СМС код");
+    }
+
+    async loginWithPassword(_email: string, _password: string): Promise<{ user: User; token: string }> {
+        await delay();
+        return { token: "mock_token_abc123", user: mockUsers[0] };
     }
 }

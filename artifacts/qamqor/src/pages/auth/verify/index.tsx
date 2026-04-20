@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { useLanguage } from "@features/language/model/context";
-import { useAuth, MOCK_OTP_CODE } from "@features/auth/model/context";
+import { useAuth } from "@features/auth/model/context";
 
 const QamqorLogo = () => (
   <div className="flex flex-col items-center gap-1 mb-6">
@@ -21,10 +21,15 @@ const QamqorLogo = () => (
 export default function SmsVerifyPage() {
   const [, navigate] = useLocation();
   const { t } = useLanguage();
-  const { flow, confirmRegister } = useAuth();
+  const { flow, verifyOtp, sendOtp, pendingEmail } = useAuth();
 
-  const [digits, setDigits] = useState(["", "", "", ""]);
+  const [digits, setDigits] = useState(() => {
+    const dev = sessionStorage.getItem('dev_otp');
+    if (dev && dev.length === 4) return dev.split('');
+    return ["", "", "", ""];
+  });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(120);
   const [canResend, setCanResend] = useState(false);
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
@@ -71,34 +76,38 @@ export default function SmsVerifyPage() {
     inputs.current[nextEmpty === -1 ? 3 : nextEmpty]?.focus();
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const code = digits.join("");
     if (code.length < 4) {
       setError(t("auth.required"));
       return;
     }
-    if (code !== MOCK_OTP_CODE) {
+    setLoading(true);
+    try {
+      await verifyOtp(code);
+      sessionStorage.removeItem('dev_otp');
+      if (flow === "forgot") {
+        navigate("/auth/reset");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch {
       setError(t("auth.invalidCode"));
       setDigits(["", "", "", ""]);
       inputs.current[0]?.focus();
-      return;
-    }
-    if (flow === "register") {
-      confirmRegister();
-      navigate("/dashboard");
-    } else if (flow === "forgot") {
-      navigate("/auth/reset");
-    } else {
-      navigate("/dashboard");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
+    if (!pendingEmail) return;
     setSecondsLeft(120);
     setCanResend(false);
     setDigits(["", "", "", ""]);
     setError("");
     inputs.current[0]?.focus();
+    await sendOtp(pendingEmail);
   };
 
   const backPath = flow === "forgot" ? "/auth/forgot" : "/auth?tab=register";
@@ -120,7 +129,12 @@ export default function SmsVerifyPage() {
           <QamqorLogo />
 
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Подтверждение почты</h1>
-          <p className="text-gray-500 text-sm mb-10">Мы отправили письмо с кодом на вашу электронную почту.</p>
+          <p className="text-gray-500 text-sm mb-2">
+            Мы отправили письмо с кодом на вашу электронную почту.
+          </p>
+          {pendingEmail && (
+            <p className="text-blue-600 text-sm font-medium mb-8">{pendingEmail}</p>
+          )}
 
           <div className="flex justify-center gap-3 mb-8">
             {digits.map((digit, i) => (
@@ -134,8 +148,10 @@ export default function SmsVerifyPage() {
                 onChange={(e) => handleDigitChange(i, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(i, e)}
                 onPaste={handlePaste}
+                disabled={loading}
                 className={`w-14 h-14 text-center text-lg font-semibold rounded-2xl border-2 outline-none transition-all
                   ${error ? "border-red-400 bg-red-50" : digit ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white focus:border-blue-500"}
+                  ${loading ? "opacity-50 cursor-not-allowed" : ""}
                 `}
                 aria-label={`Цифра ${i + 1}`}
               />
@@ -148,9 +164,10 @@ export default function SmsVerifyPage() {
 
           <button
             onClick={handleConfirm}
-            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-md shadow-blue-200 mb-6"
+            disabled={loading}
+            className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-colors shadow-md shadow-blue-200 mb-6"
           >
-            {t("auth.confirm")}
+            {loading ? "Проверяем..." : t("auth.confirm")}
           </button>
 
           <div className="flex items-center justify-center gap-2 text-sm">

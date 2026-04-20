@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import kz.qamqor.dto.request.LoginRequest;
 import kz.qamqor.dto.request.SendOtpRequest;
 import kz.qamqor.dto.request.VerifyOtpRequest;
 import kz.qamqor.dto.response.AuthResponse;
@@ -42,8 +43,13 @@ public class AuthController {
     )
     @PostMapping("/send-otp")
     public ResponseEntity<Map<String, String>> sendOtp(@Valid @RequestBody SendOtpRequest request) {
-        authService.sendOtp(request);
-        return ResponseEntity.ok(Map.of("message", "OTP sent to " + request.email()));
+        String code = authService.sendOtp(request);
+        // DEV ONLY: code returned in response so auth works without a working mail server.
+        // Remove "dev_code" field before going to production.
+        return ResponseEntity.ok(Map.of(
+            "message", "OTP sent to " + request.email(),
+            "dev_code", code
+        ));
     }
 
     @Operation(
@@ -61,5 +67,21 @@ public class AuthController {
     @PostMapping("/verify-otp")
     public ResponseEntity<AuthResponse> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
         return ResponseEntity.ok(authService.verifyOtp(request));
+    }
+
+    @Operation(
+        summary = "Войти по паролю",
+        description = "Вход по email и паролю. Пароль задаётся при первой регистрации через OTP.",
+        responses = {
+            @ApiResponse(responseCode = "200", description = "Авторизация успешна",
+                content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(implementation = AuthResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Неверный email или пароль",
+                content = @Content(schema = @Schema(hidden = true)))
+        }
+    )
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        return ResponseEntity.ok(authService.login(request));
     }
 }

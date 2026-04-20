@@ -3,6 +3,7 @@ package kz.qamqor.config;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
+import io.minio.SetBucketPolicyArgs;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -42,6 +43,11 @@ public class MinioConfig {
                 client.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
                 log.info("MinIO bucket '{}' created", bucket);
             }
+            String policy = """
+                {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}
+                """.formatted(bucket);
+            client.setBucketPolicy(SetBucketPolicyArgs.builder().bucket(bucket).config(policy).build());
+            log.info("MinIO bucket '{}' public-read policy applied", bucket);
         } catch (Exception e) {
             log.warn("MinIO is not available at startup: {}", e.getMessage());
         }

@@ -1,0 +1,111 @@
+version: "3.9"
+
+services:
+
+  # ──────────────────────────────
+  # PostgreSQL
+  # ──────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: qamqor-postgres-final
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-qamqor}
+      POSTGRES_USER:     ${DB_USER:-qamqor}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-qamqor}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-qamqor} -d ${DB_NAME:-qamqor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────────────────────
+  # MinIO  (S3-compatible storage)
+  # ──────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: qamqor-minio-final
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────────────────────
+  # Spring Boot backend
+  # ──────────────────────────────
+  backend:
+    build:
+      context: ./artifacts/backend
+      dockerfile: Dockerfile
+    container_name: qamqor-backend-final
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      # Database
+      DB_HOST:     postgres
+      DB_PORT:     5432
+      DB_NAME:     ${DB_NAME:-qamqor}
+      DB_USER:     ${DB_USER:-qamqor}
+      DB_PASSWORD: ${DB_PASSWORD:-qamqor}
+      # MinIO
+      MINIO_URL:        http://minio:9000
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET:     ${MINIO_BUCKET:-qamqor}
+      # JWT
+      JWT_SECRET:        ${JWT_SECRET:-qamqor-super-secret-key-change-in-production-min-32-chars}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
+      # Mail
+      MAIL_HOST:     ${MAIL_HOST:-smtp.mailersend.net}
+      MAIL_PORT:     ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM:     ${MAIL_FROM:-}
+      # CORS – allow both local dev port and production frontend
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173}
+    ports:
+      - "8080:8080"
+
+  # ──────────────────────────────
+  # React frontend  (Vite → nginx)
+  # Build context is the repo root so pnpm can resolve
+  # the @workspace/api-client-react monorepo dependency.
+  # VITE_* vars are baked in at build time (Vite requirement).
+  # ──────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: artifacts/qamqor/Dockerfile
+      args:
+        VITE_API_MODE:     ${VITE_API_MODE:-real}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080/api/v1}
+    container_name: qamqor-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+
+volumes:
+  postgres_data:
+  minio_data:
