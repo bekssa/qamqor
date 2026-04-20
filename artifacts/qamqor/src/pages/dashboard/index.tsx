@@ -231,7 +231,7 @@ function AccessibilityToggle() {
 function UserCard({ user }: { user: { firstName:string;lastName:string;email:string;phone:string;role:string;birthDate?:string;city?:string;avatarUrl?:string } }) {
   const { t } = useLanguage();
   const initials = `${user.firstName?.[0]??""}${user.lastName?.[0]??""}`.toUpperCase();
-  const roleLabel = user.role==="seek-help" ? t("dashboard.roleSeekHelp") : t("dashboard.roleOfferHelp");
+  const roleLabel = (user.role==="elderly" || user.role==="seek-help") ? t("dashboard.roleSeekHelp") : t("dashboard.roleOfferHelp");
   const rows = [
     {label:t("dashboard.userRole"),  value:roleLabel},
     {label:t("dashboard.userEmail"), value:user.email},
@@ -2340,7 +2340,7 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
     city      !== initRef.current.city      ||
     role      !== initRef.current.role      ||
     avatarFile !== null                     ||
-    (role==="offer-help" && categories.join(",") !== initRef.current.categories);
+    (role==="volunteer" && categories.join(",") !== initRef.current.categories);
 
   useEffect(() => { onDirtyChange(isDirty); }, [firstName,lastName,email,phone,city,role,categories]);
 
@@ -2426,22 +2426,22 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
           </div>
           <p className="text-[11px] text-gray-400">Мы поддерживаем формат PNG, JPEG и GIF размером менее 2 МБ</p>
           <div className="flex gap-2">
-            <button onClick={()=>setRole("seek-help")}
+            <button onClick={()=>setRole("elderly")}
               className="px-4 py-1.5 text-xs font-semibold rounded-xl transition-colors"
-              style={role==="seek-help"?{background:BLUE,color:"white",border:"none"}:{background:"white",color:BLUE,border:`1px solid ${BLUE}`}}>
+              style={role==="elderly"?{background:BLUE,color:"white",border:"none"}:{background:"white",color:BLUE,border:`1px solid ${BLUE}`}}>
               Запросить помощь
             </button>
-            <button onClick={()=>setRole("offer-help")}
+            <button onClick={()=>setRole("volunteer")}
               className="px-4 py-1.5 text-xs font-semibold rounded-xl transition-colors"
-              style={role==="offer-help"?{background:BLUE,color:"white",border:"none"}:{background:"white",color:BLUE,border:`1px solid ${BLUE}`}}>
+              style={role==="volunteer"?{background:BLUE,color:"white",border:"none"}:{background:"white",color:BLUE,border:`1px solid ${BLUE}`}}>
               Оказать помощь
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── Categories (offer-help only) ── */}
-      {role==="offer-help" && (
+      {/* ── Categories (volunteer only) ── */}
+      {role==="volunteer" && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-gray-700">Категории</label>
@@ -2603,10 +2603,15 @@ function DashboardContent({ activeNav, userId, userRole, firstName, openedChatId
   settingsSaveRef: React.MutableRefObject<(()=>void)|null>;
 }) {
   const { t } = useLanguage();
+  const isVolunteer = userRole === "volunteer";
   const [activeTab, setActiveTab] = useState<TabKey>("create");
   const [settingsDirtyLocal, setSettingsDirtyLocal] = useState(false);
   const [pendingTab, setPendingTab] = useState<TabKey|null>(null);
   const [showUnsavedTab, setShowUnsavedTab] = useState(false);
+
+  useEffect(() => {
+    if (isVolunteer && activeTab === "search") setActiveTab("create");
+  }, [isVolunteer]);
 
   const handleDirtyChange = (dirty: boolean) => {
     setSettingsDirtyLocal(dirty);
@@ -2652,8 +2657,8 @@ function DashboardContent({ activeNav, userId, userRole, firstName, openedChatId
   if (activeNav!=="dashboard") return <ComingSoon/>;
 
   const tabs: {key:TabKey;label:string}[] = [
-    {key:"create",        label:t("dashboard.tabCreate")},
-    {key:"search",        label:t("dashboard.tabSearch")},
+    {key:"create",        label: isVolunteer ? "Мои задачи" : t("dashboard.tabCreate")},
+    ...(!isVolunteer ? [{key:"search" as TabKey, label:t("dashboard.tabSearch")}] : []),
     {key:"notifications", label:t("dashboard.tabNotifications")},
     {key:"settings",      label:t("dashboard.tabSettings")},
   ];
