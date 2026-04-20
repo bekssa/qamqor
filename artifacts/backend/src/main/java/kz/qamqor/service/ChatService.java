@@ -6,6 +6,7 @@ import kz.qamqor.dto.response.MessageDto;
 import kz.qamqor.entity.Chat;
 import kz.qamqor.entity.Message;
 import kz.qamqor.entity.User;
+import java.util.List;
 import kz.qamqor.exception.AppException;
 import kz.qamqor.repository.ChatRepository;
 import kz.qamqor.repository.MessageRepository;
@@ -27,16 +28,34 @@ public class ChatService {
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
+    @Transactional(readOnly = true)
     public List<ChatDto> getChatsForUser(String userId) {
         return chatRepository.findAllByParticipantId(userId).stream()
             .map(ChatDto::from)
             .toList();
     }
 
+    @Transactional(readOnly = true)
     public List<MessageDto> getMessages(String chatId) {
         return messageRepository.findAllByChatIdOrderByCreatedAtAsc(chatId).stream()
             .map(MessageDto::from)
             .toList();
+    }
+
+    @Transactional
+    public ChatDto findOrCreateChat(String userId1, String userId2) {
+        return chatRepository.findByTwoParticipants(userId1, userId2)
+            .map(ChatDto::from)
+            .orElseGet(() -> {
+                User u1 = userRepository.findById(userId1)
+                    .orElseThrow(() -> new AppException("User not found", HttpStatus.NOT_FOUND));
+                User u2 = userRepository.findById(userId2)
+                    .orElseThrow(() -> new AppException("User not found", HttpStatus.NOT_FOUND));
+                Chat chat = Chat.builder()
+                    .participants(List.of(u1, u2))
+                    .build();
+                return ChatDto.from(chatRepository.save(chat));
+            });
     }
 
     @Transactional

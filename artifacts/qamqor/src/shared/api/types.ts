@@ -29,6 +29,26 @@ export interface ServiceRequest {
     scheduledDate?: string;
 }
 
+export interface ChatParticipant {
+    id: string;
+    name: string;
+    avatarUrl: string | null;
+}
+
+export interface Chat {
+    id: string;
+    participants: ChatParticipant[];
+    createdAt: string;
+}
+
+export interface Message {
+    id: number;
+    chatId: string;
+    senderId: string;
+    text: string;
+    timestamp: string;
+}
+
 export interface Review {
     id: string;
     authorId: string;

@@ -1,5 +1,5 @@
 import { IKamkorApi } from './IKamkorApi';
-import { User, ServiceRequest, Review } from './types';
+import { User, ServiceRequest, Review, Chat, Message } from './types';
 
 const TOKEN_KEY = 'qamqor-token';
 
@@ -12,6 +12,20 @@ export class RealKamkorApi implements IKamkorApi {
 
     private getToken(): string | null {
         return localStorage.getItem(TOKEN_KEY);
+    }
+
+    private getMyId(): string | null {
+        const token = this.getToken();
+        if (!token) return null;
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload.sub ?? null;
+        } catch { return null; }
+    }
+
+    getWsUrl(): string {
+        const httpBase = this.baseUrl.replace(/\/api\/v1\/?$/, '');
+        return httpBase.replace(/^http/, (p) => p === 'https' ? 'wss' : 'ws') + '/ws-native';
     }
 
     private async fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -239,5 +253,26 @@ export class RealKamkorApi implements IKamkorApi {
             method: 'POST',
             body: JSON.stringify(data),
         });
+    }
+
+    // ── Chat ─────────────────────────────────────────────────────────────────
+
+    async getChats(): Promise<Chat[]> {
+        const myId = this.getMyId();
+        if (!myId) return [];
+        return this.fetchApi<Chat[]>(`/chats?userId=${myId}`);
+    }
+
+    async openChat(otherUserId: string): Promise<Chat> {
+        const myId = this.getMyId();
+        if (!myId) throw new Error('Not authenticated');
+        return this.fetchApi<Chat>('/chats', {
+            method: 'POST',
+            body: JSON.stringify({ participantIds: [myId, otherUserId] }),
+        });
+    }
+
+    async getMessages(chatId: string): Promise<Message[]> {
+        return this.fetchApi<Message[]>(`/chats/${chatId}/messages`);
     }
 }

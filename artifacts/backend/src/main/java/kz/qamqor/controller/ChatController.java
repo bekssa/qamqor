@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import kz.qamqor.dto.request.OpenChatRequest;
 import kz.qamqor.dto.request.SendMessageDto;
 import kz.qamqor.dto.response.ChatDto;
 import kz.qamqor.dto.response.MessageDto;
@@ -43,6 +44,16 @@ public class ChatController {
     @GetMapping("/api/v1/chats")
     public ResponseEntity<List<ChatDto>> getChats(@RequestParam String userId) {
         return ResponseEntity.ok(chatService.getChatsForUser(userId));
+    }
+
+    @Operation(summary = "Открыть или создать чат между двумя пользователями")
+    @ResponseBody
+    @PostMapping("/api/v1/chats")
+    public ResponseEntity<ChatDto> openChat(@Valid @RequestBody OpenChatRequest dto) {
+        return ResponseEntity.ok(chatService.findOrCreateChat(
+            dto.participantIds().get(0),
+            dto.participantIds().get(1)
+        ));
     }
 
     @Operation(

@@ -7,13 +7,21 @@ import java.util.List;
 
 public record ChatDto(
     String id,
-    List<String> participantIds,
+    List<ParticipantInfo> participants,
     Instant createdAt
 ) {
+    public record ParticipantInfo(String id, String name, String avatarUrl) {}
+
     public static ChatDto from(Chat c) {
         return new ChatDto(
             c.getId(),
-            c.getParticipants().stream().map(u -> u.getId()).toList(),
+            c.getParticipants().stream().map(u -> {
+                String fn = u.getFirstName();
+                String ln = u.getLastName();
+                String name = ((fn != null ? fn : "") + " " + (ln != null ? ln : "")).trim();
+                if (name.isEmpty()) name = u.getName() != null ? u.getName() : "";
+                return new ParticipantInfo(u.getId(), name, u.getAvatarUrl());
+            }).toList(),
             c.getCreatedAt()
         );
     }

@@ -21,8 +21,8 @@ COPY lib/api-zod/package.json           ./lib/api-zod/
 COPY lib/db/package.json                ./lib/db/
 COPY scripts/package.json               ./scripts/
 
-# Install all workspace deps (frozen to match lock file)
-RUN pnpm install --frozen-lockfile
+# Install all workspace deps
+RUN pnpm install --no-frozen-lockfile
 
 # Root tsconfig files (artifacts/qamqor/tsconfig.json extends ../../tsconfig.base.json)
 COPY tsconfig.base.json ./

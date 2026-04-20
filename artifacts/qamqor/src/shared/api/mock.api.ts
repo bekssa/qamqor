@@ -1,5 +1,5 @@
 import { IKamkorApi } from './IKamkorApi';
-import { User, ServiceRequest, Review } from './types';
+import { User, ServiceRequest, Review, Chat, Message } from './types';
 
 // In-memory mock databases
 let mockUsers: User[] = [
@@ -186,4 +186,11 @@ export class MockKamkorApi implements IKamkorApi {
         await delay();
         return { token: "mock_token_abc123", user: mockUsers[0] };
     }
+
+    async getChats(): Promise<Chat[]> { return []; }
+    async openChat(_otherUserId: string): Promise<Chat> {
+        return { id: 'mock-chat-1', participants: [], createdAt: new Date().toISOString() };
+    }
+    async getMessages(_chatId: string): Promise<Message[]> { return []; }
+    getWsUrl(): string { return ''; }
 }

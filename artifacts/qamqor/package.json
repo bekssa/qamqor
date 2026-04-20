@@ -72,6 +72,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@stomp/stompjs": "^7.0.0",
     "@types/leaflet": "^1.9.21",
     "leaflet": "^1.9.4"
   }

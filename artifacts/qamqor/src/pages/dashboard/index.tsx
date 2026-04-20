@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Client } from "@stomp/stompjs";
+import type { Chat, Message } from "@shared/api";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useLocation } from "wouter";
@@ -1032,6 +1034,7 @@ interface HelperRequest {
   id: string;
   name: string;
   avatarUrl: string | null;
+  authorId: string;
   serviceLabel: string;
   description: string;
   price: string;
@@ -1052,6 +1055,7 @@ function mapHelperRequest(r: any): HelperRequest {
     id: String(r.id),
     name: r.authorName || "Пользователь",
     avatarUrl: r.authorAvatarUrl ?? null,
+    authorId: r.authorId ?? "",
     serviceLabel: HELPER_SERVICE_LABELS[r.category ?? ""] ?? r.title ?? "",
     description: r.description ?? "",
     price: r.price != null ? String(r.price) : "",
@@ -1138,7 +1142,7 @@ function HelperReqTable({ reqs, onComplete }: {
   );
 }
 
-function HelperAvailableTable({ reqs }: { reqs: HelperRequest[] }) {
+function HelperAvailableTable({ reqs, onChat }: { reqs: HelperRequest[]; onChat: (authorId: string) => void }) {
   const { t } = useLanguage();
   const COLS = [t("dashboard.colDescription"), t("dashboard.colDateReg"), t("dashboard.colDateExec"), t("dashboard.colPrice"), t("dashboard.colAddress")];
   const [accepted, setAccepted] = useState<string[]>([]);
@@ -1193,7 +1197,8 @@ function HelperAvailableTable({ reqs }: { reqs: HelperRequest[] }) {
               <td className="px-3 py-3 text-gray-600 border-b border-gray-100">{req.address}</td>
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-1.5 justify-end">
-                  <button className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
+                  <button onClick={() => onChat(req.authorId)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
                     style={{background:"#FEF9C3", border:"1px solid #FDE047"}} title="Написать">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                   </button>
@@ -1217,7 +1222,7 @@ function HelperAvailableTable({ reqs }: { reqs: HelperRequest[] }) {
   );
 }
 
-function HelperDashboard({ user }: { user: { firstName: string } }) {
+function HelperDashboard({ user, onOpenChat }: { user: { firstName: string }; onOpenChat: (chat: Chat) => void }) {
   const { t } = useLanguage();
   const [activeReqs, setActiveReqs] = useState<HelperRequest[]>([]);
   const [availableReqs, setAvailableReqs] = useState<HelperRequest[]>([]);
@@ -1228,6 +1233,15 @@ function HelperDashboard({ user }: { user: { firstName: string } }) {
     api.getAssignedRequests().then(list => setActiveReqs(list.map(mapHelperRequest))).catch(() => {});
     api.getAvailableRequests().then(list => setAvailableReqs(list.map(mapHelperRequest))).catch(() => {});
   }, []);
+
+  const handleChat = async (authorId: string) => {
+    try {
+      const chat = await api.openChat(authorId);
+      onOpenChat(chat);
+    } catch (e) {
+      console.error("[CHAT] failed to open chat", e);
+    }
+  };
 
   const handleComplete = (id: string) => setCompletingId(id);
   const handleSubmitCompletion = () => {
@@ -1271,7 +1285,7 @@ function HelperDashboard({ user }: { user: { firstName: string } }) {
             )}
           </div>
         </div>
-        <HelperAvailableTable reqs={availableReqs}/>
+        <HelperAvailableTable reqs={availableReqs} onChat={handleChat}/>
       </div>
 
       {completingId !== null && (
@@ -1282,53 +1296,92 @@ function HelperDashboard({ user }: { user: { firstName: string } }) {
 }
 
 /* ─────────────── chat detail ─────────────── */
-function ChatDetail({ conv }: { conv: Conversation }) {
+function ChatDetail({ chat, myId }: { chat: Chat; myId: string }) {
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>(CHAT_MESSAGES[conv.id] ?? []);
+  const [messages, setMessages] = useState<Message[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const stompRef = useRef<Client | null>(null);
+
+  const other = chat.participants.find(p => p.id !== myId) ?? chat.participants[0];
+
+  useEffect(() => {
+    api.getMessages(chat.id).then(setMessages).catch(() => {});
+  }, [chat.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    const wsUrl = api.getWsUrl();
+    if (!wsUrl) return;
+    const client = new Client({
+      brokerURL: wsUrl,
+      onConnect: () => {
+        client.subscribe(`/topic/chat/${chat.id}`, (frame) => {
+          const msg: Message = JSON.parse(frame.body);
+          if (msg.senderId !== myId) {
+            setMessages(prev => [...prev, msg]);
+          }
+        });
+      },
+    });
+    client.activate();
+    stompRef.current = client;
+    return () => { client.deactivate(); };
+  }, [chat.id, myId]);
+
   const handleSend = () => {
     const text = input.trim();
     if (!text) return;
-    const now = new Date();
-    const time = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-    setMessages(m => [...m, { id: Date.now(), from: "me", text, time }]);
     setInput("");
+    const now = new Date().toISOString();
+    const localMsg: Message = { id: Date.now(), chatId: chat.id, senderId: myId, text, timestamp: now };
+    setMessages(prev => [...prev, localMsg]);
+    stompRef.current?.publish({
+      destination: `/app/chat_${chat.id}`,
+      body: JSON.stringify({ senderId: myId, text }),
+    });
+  };
+
+  const fmtTime = (iso: string) => {
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
   };
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100">
-        <Avatar conv={conv} size={40}/>
-        <p className="font-bold text-gray-900 text-sm">{conv.name}</p>
+        {other?.avatarUrl
+          ? <img src={other.avatarUrl} alt={other.name} className="w-10 h-10 rounded-full object-cover shrink-0"/>
+          : <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+              style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
+              {(other?.name ?? "?").substring(0,1).toUpperCase()}
+            </div>
+        }
+        <p className="font-bold text-gray-900 text-sm">{other?.name ?? "Пользователь"}</p>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-gray-50">
-        <div className="text-center">
-          <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">22 марта</span>
-        </div>
-        {messages.map(msg => (
-          <div key={msg.id} className={`flex ${msg.from==="me" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[65%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed relative ${
-              msg.from==="me"
-                ? "text-white rounded-tr-sm"
-                : "text-gray-800 rounded-tl-sm border border-gray-200"
-            }`}
-            style={msg.from==="me"?{background:BLUE}:{background:"white"}}>
-              {msg.text.split("\n").map((line,i)=>(
-                <span key={i}>{line}{i<msg.text.split("\n").length-1 && <br/>}</span>
-              ))}
-              <span className={`text-[10px] ml-2 ${msg.from==="me"?"text-blue-100":"text-gray-400"} inline-flex items-center gap-0.5`}>
-                {msg.time}
-                {msg.from==="me" && <CheckCheck className="w-3 h-3 text-blue-200"/>}
-              </span>
+        {messages.map(msg => {
+          const isMe = msg.senderId === myId;
+          return (
+            <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[65%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
+                isMe ? "text-white rounded-tr-sm" : "text-gray-800 rounded-tl-sm border border-gray-200"
+              }`}
+              style={isMe ? {background:BLUE} : {background:"white"}}>
+                {msg.text.split("\n").map((line,i)=>(
+                  <span key={i}>{line}{i<msg.text.split("\n").length-1 && <br/>}</span>
+                ))}
+                <span className={`text-[10px] ml-2 ${isMe?"text-blue-100":"text-gray-400"} inline-flex items-center gap-0.5`}>
+                  {fmtTime(msg.timestamp)}
+                  {isMe && <CheckCheck className="w-3 h-3 text-blue-200"/>}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef}/>
       </div>
 
@@ -1350,58 +1403,41 @@ function ChatDetail({ conv }: { conv: Conversation }) {
 }
 
 /* ─────────────── messages list ─────────────── */
-type MsgFilter = "all" | "new" | "read" | "important";
+function MessagesContent({ onOpenChat, myId }: { onOpenChat: (chat: Chat) => void; myId: string }) {
+  const [chats, setChats] = useState<Chat[]>([]);
 
-function MessagesContent({ onOpenChat }: { onOpenChat: (id: number) => void }) {
-  const [filter, setFilter] = useState<MsgFilter>("all");
-
-  const filterTabs: {key:MsgFilter;label:string}[] = [
-    {key:"all",label:"Все"},
-    {key:"new",label:"Новые"},
-    {key:"read",label:"Прочитанные"},
-    {key:"important",label:"Важные"},
-  ];
-
-  const filtered = CONVERSATIONS.filter(c => {
-    if (filter==="new") return c.unread;
-    if (filter==="read") return c.read;
-    return true;
-  });
+  useEffect(() => {
+    api.getChats().then(setChats).catch(() => {});
+  }, []);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="flex border-b border-gray-100 px-2">
-        {filterTabs.map(tab=>(
-          <button key={tab.key} onClick={()=>setFilter(tab.key)}
-            className="px-4 py-3.5 text-xs font-semibold transition-colors whitespace-nowrap border-b-2 -mb-px"
-            style={filter===tab.key
-              ?{color:BLUE,borderColor:BLUE}
-              :{color:"#6b7280",borderColor:"transparent"}}>
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="divide-y divide-gray-100">
-        {filtered.map(conv=>(
-          <button key={conv.id} onClick={()=>onOpenChat(conv.id)}
-            className="w-full flex items-start gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left">
-            <Avatar conv={conv} size={44}/>
-            <div className="flex-1 min-w-0">
-              <p className={`text-sm leading-tight ${conv.unread?"font-bold text-gray-900":"font-semibold text-gray-800"}`}>
-                {conv.name}
-              </p>
-              <p className="text-xs text-gray-400 leading-snug mt-0.5 line-clamp-2 whitespace-pre-line">
-                {conv.preview}
-              </p>
-            </div>
-            <div className="shrink-0 flex flex-col items-end gap-1 pt-0.5">
-              <span className="text-xs text-gray-400 whitespace-nowrap">{conv.time}</span>
-              {conv.read && <CheckCheck className="w-3.5 h-3.5" style={{color:BLUE}}/>}
-            </div>
-          </button>
-        ))}
-      </div>
+      {chats.length === 0 ? (
+        <p className="px-5 py-10 text-xs text-gray-400 text-center">Нет диалогов</p>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {chats.map(chat => {
+            const other = chat.participants.find(p => p.id !== myId) ?? chat.participants[0];
+            const name = other?.name || "Пользователь";
+            const avatarUrl = other?.avatarUrl ?? null;
+            return (
+              <button key={chat.id} onClick={() => onOpenChat(chat)}
+                className="w-full flex items-start gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left">
+                {avatarUrl
+                  ? <img src={avatarUrl} alt={name} className="w-11 h-11 rounded-full object-cover shrink-0"/>
+                  : <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                      style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
+                      {name.substring(0,1).toUpperCase()}
+                    </div>
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 leading-tight">{name}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -2620,13 +2656,14 @@ function ComingSoon() {
 }
 
 /* ─────────────── main content area ─────────────── */
-function DashboardContent({ activeNav, userId, userRole, firstName, openedChatId, setOpenedChatId, onSettingsDirtyChange, settingsSaveRef }: {
+function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName, openedChat, setOpenedChat, onSettingsDirtyChange, settingsSaveRef }: {
   activeNav: NavKey;
+  setActiveNav: (nav: NavKey) => void;
   userId: string;
   userRole: string;
   firstName: string;
-  openedChatId: number | null;
-  setOpenedChatId: (id: number | null) => void;
+  openedChat: Chat | null;
+  setOpenedChat: (chat: Chat | null) => void;
   onSettingsDirtyChange: (dirty: boolean) => void;
   settingsSaveRef: React.MutableRefObject<(()=>void)|null>;
 }) {
@@ -2667,17 +2704,20 @@ function DashboardContent({ activeNav, userId, userRole, firstName, openedChatId
     if (pendingTab) { setActiveTab(pendingTab); setPendingTab(null); }
   };
 
+  const handleOpenChat = (chat: Chat) => {
+    setActiveNav("messages");
+    setOpenedChat(chat);
+  };
+
   if (activeNav==="messages") {
-    if (openedChatId !== null) {
-      const conv = CONVERSATIONS.find(c=>c.id===openedChatId);
-      if (!conv) return null;
+    if (openedChat !== null) {
       return (
         <div style={{ height: "calc(100vh - 108px)" }}>
-          <ChatDetail conv={conv}/>
+          <ChatDetail chat={openedChat} myId={userId}/>
         </div>
       );
     }
-    return <MessagesContent onOpenChat={setOpenedChatId}/>;
+    return <MessagesContent onOpenChat={setOpenedChat} myId={userId}/>;
   }
 
   if (activeNav==="requests") return <MyRequestsContent userId={userId}/>;
@@ -2705,7 +2745,7 @@ function DashboardContent({ activeNav, userId, userRole, firstName, openedChatId
             ))}
           </div>
         </div>
-        {activeTab==="create"        && (isVolunteer ? <HelperDashboard user={{firstName}}/> : <CreateRequestTab userId={userId}/>)}
+        {activeTab==="create"        && (isVolunteer ? <HelperDashboard user={{firstName}} onOpenChat={handleOpenChat}/> : <CreateRequestTab userId={userId}/>)}
         {activeTab==="search"        && <FindHelpersTab userId={userId}/>}
         {activeTab==="notifications" && <NotificationsTab/>}
         {activeTab==="settings"      && <AccountSettingsTab onDirtyChange={handleDirtyChange} settingsSaveRef={settingsSaveRef}/>}
@@ -2722,7 +2762,7 @@ function DashboardPage() {
   const { currentUser } = useAuth();
   const { t } = useLanguage();
   const [activeNav, setActiveNav] = useState<NavKey>("dashboard");
-  const [openedChatId, setOpenedChatId] = useState<number | null>(null);
+  const [openedChat, setOpenedChat] = useState<Chat | null>(null);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [pendingNav, setPendingNav] = useState<NavKey|null>(null);
   const [showNavUnsaved, setShowNavUnsaved] = useState(false);
@@ -2736,7 +2776,7 @@ function DashboardPage() {
       setShowNavUnsaved(true);
     } else {
       setActiveNav(key);
-      setOpenedChatId(null);
+      setOpenedChat(null);
     }
   };
 
@@ -2748,7 +2788,7 @@ function DashboardPage() {
   const headerLeft = navTitleMap[activeNav] ? (
     <button
       onClick={() => {
-        if (activeNav === "messages" && openedChatId !== null) setOpenedChatId(null);
+        if (activeNav === "messages" && openedChat !== null) setOpenedChat(null);
         else handleNavChange("dashboard");
       }}
       className="flex items-center gap-1.5 font-bold text-sm transition-opacity hover:opacity-75"
@@ -2777,11 +2817,12 @@ function DashboardPage() {
 
           <DashboardContent
             activeNav={activeNav}
+            setActiveNav={setActiveNav}
             userId={currentUser.id}
             userRole={currentUser.role}
             firstName={currentUser.firstName}
-            openedChatId={openedChatId}
-            setOpenedChatId={setOpenedChatId}
+            openedChat={openedChat}
+            setOpenedChat={setOpenedChat}
             onSettingsDirtyChange={setSettingsDirty}
             settingsSaveRef={settingsSaveRef}
           />
@@ -2794,12 +2835,12 @@ function DashboardPage() {
             settingsSaveRef.current?.();
             setSettingsDirty(false);
             setShowNavUnsaved(false);
-            if (pendingNav) { setActiveNav(pendingNav); setOpenedChatId(null); setPendingNav(null); }
+            if (pendingNav) { setActiveNav(pendingNav); setOpenedChat(null); setPendingNav(null); }
           }}
           onDiscard={()=>{
             setSettingsDirty(false);
             setShowNavUnsaved(false);
-            if (pendingNav) { setActiveNav(pendingNav); setOpenedChatId(null); setPendingNav(null); }
+            if (pendingNav) { setActiveNav(pendingNav); setOpenedChat(null); setPendingNav(null); }
           }}
         />
       )}

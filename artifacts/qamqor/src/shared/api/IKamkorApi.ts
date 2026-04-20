@@ -1,4 +1,4 @@
-import { User, ServiceRequest, Review } from './types';
+import { User, ServiceRequest, Review, Chat, Message } from './types';
 
 export interface IKamkorApi {
     // Requests API
@@ -44,4 +44,10 @@ export interface IKamkorApi {
     // Reviews API
     getReviewsByUserId(userId: string): Promise<Review[]>;
     submitReview(data: Omit<Review, 'id' | 'createdAt'>): Promise<Review>;
+
+    // Chat API
+    getChats(): Promise<Chat[]>;
+    openChat(otherUserId: string): Promise<Chat>;
+    getMessages(chatId: string): Promise<Message[]>;
+    getWsUrl(): string;
 }
