@@ -1142,13 +1142,85 @@ function HelperReqTable({ reqs, onComplete }: {
   );
 }
 
+function RequestDetailsModal({ req, onClose, onChat, onAccept, isAccepted }: {
+  req: HelperRequest; onClose: () => void; onChat: () => void; onAccept: () => void; isAccepted: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transition-all transform scale-100 opacity-100" onClick={e=>e.stopPropagation()}>
+        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-bold text-gray-900 text-lg">Полная информация о заявке</h3>
+        </div>
+        <div className="px-6 py-5 space-y-6">
+          <div className="flex items-center gap-4">
+            {req.avatarUrl
+              ? <img src={req.avatarUrl} alt={req.name} className="w-14 h-14 rounded-full object-cover shrink-0"/>
+              : <div className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0"
+                  style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
+                  {req.name.substring(0, 1).toUpperCase()}
+                </div>
+            }
+            <div>
+              <p className="font-bold text-gray-800 text-base">{req.name}</p>
+              <p className="text-sm text-gray-500">Заказчик</p>
+            </div>
+          </div>
+          
+          <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1">Категория</p>
+              <p className="text-sm font-semibold text-gray-800">{req.serviceLabel}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1">Описание задачи</p>
+              <p className="text-sm text-gray-700 leading-relaxed">{req.description}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-400 font-medium mb-1">Дата регистрации</p>
+                <p className="text-sm text-gray-800">{req.dateCreated}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 font-medium mb-1">Желаемая дата</p>
+                <p className="text-sm text-gray-800 font-medium">{req.dateExecution}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1">Вознаграждение</p>
+              <p className="text-base font-bold" style={{color: "#2C9C42"}}>{req.price}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1">Адрес</p>
+              <p className="text-sm text-gray-800">{req.address}</p>
+            </div>
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-3">
+          <button onClick={() => { onClose(); onChat(); }}
+            className="px-5 py-2.5 rounded-xl font-bold text-sm transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+            style={{background:"#FEF9C3", color:"#EAB308", border:"1px solid #FDE047"}}>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Написать
+          </button>
+          <button onClick={() => { onAccept(); onClose(); }}
+            className="px-5 py-2.5 rounded-xl font-bold text-sm transition-opacity hover:opacity-90 flex items-center justify-center gap-2 text-white"
+            style={{background: isAccepted ? "#2C9C42" : "#22C55E", border:`1px solid ${isAccepted ? "#2C9C42" : "#22C55E"}`}}>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            {isAccepted ? "Принято" : "Принять"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HelperAvailableTable({ reqs, onChat }: { reqs: HelperRequest[]; onChat: (authorId: string) => void }) {
   const { t } = useLanguage();
   const COLS = [t("dashboard.colDescription"), t("dashboard.colDateReg"), t("dashboard.colDateExec"), t("dashboard.colPrice"), t("dashboard.colAddress")];
   const [accepted, setAccepted] = useState<string[]>([]);
-  const [rejected, setRejected] = useState<string[]>([]);
+  const [viewingReq, setViewingReq] = useState<HelperRequest | null>(null);
 
-  const visible = reqs.filter(r => !rejected.includes(r.id));
+  const visible = reqs;
 
   return (
     <div className="overflow-x-auto px-4 pt-3 pb-1">
@@ -1174,7 +1246,7 @@ function HelperAvailableTable({ reqs, onChat }: { reqs: HelperRequest[]; onChat:
         </thead>
         <tbody>
           {visible.map(req => (
-            <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+            <tr key={req.id} onClick={() => setViewingReq(req)} className="hover:bg-gray-50 cursor-pointer transition-colors">
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-start gap-2.5">
                   {req.avatarUrl
@@ -1197,20 +1269,15 @@ function HelperAvailableTable({ reqs, onChat }: { reqs: HelperRequest[]; onChat:
               <td className="px-3 py-3 text-gray-600 border-b border-gray-100">{req.address}</td>
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-1.5 justify-end">
-                  <button onClick={() => onChat(req.authorId)}
+                  <button onClick={(e) => { e.stopPropagation(); onChat(req.authorId); }}
                     className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
                     style={{background:"#FEF9C3", border:"1px solid #FDE047"}} title="Написать">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                   </button>
-                  <button onClick={() => setAccepted(a => [...a, req.id])}
+                  <button onClick={(e) => { e.stopPropagation(); setAccepted(a => [...a, req.id]); }}
                     className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
                     style={{background: accepted.includes(req.id) ? GREEN : "#DCFCE7", border:`1px solid ${accepted.includes(req.id) ? GREEN : "#86EFAC"}`}} title="Принять">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke={accepted.includes(req.id) ? "white" : "#22C55E"} strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                  </button>
-                  <button onClick={() => setRejected(r => [...r, req.id])}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
-                    style={{background:"#FEE2E2", border:"1px solid #FCA5A5"}} title="Отклонить">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 </div>
               </td>
@@ -1218,6 +1285,15 @@ function HelperAvailableTable({ reqs, onChat }: { reqs: HelperRequest[]; onChat:
           ))}
         </tbody>
       </table>
+      {viewingReq && (
+        <RequestDetailsModal 
+          req={viewingReq} 
+          onClose={() => setViewingReq(null)} 
+          onChat={() => onChat(viewingReq.authorId)} 
+          onAccept={() => setAccepted(a => [...a, viewingReq.id])} 
+          isAccepted={accepted.includes(viewingReq.id)} 
+        />
+      )}
     </div>
   );
 }
@@ -2234,14 +2310,14 @@ function CategoryPickerModal({ selected, onToggle, onClose }: {
           {CATEGORIES_LIST.map(cat=>{
             const isSel = selected.includes(cat.key);
             return (
-              <div key={cat.key} className="border border-gray-200 rounded-2xl p-4 flex flex-col items-center text-center gap-3">
+              <div key={cat.key} className="border border-gray-200 rounded-2xl p-4 flex flex-col items-center text-center gap-3 h-full">
                 <img src={CATEGORY_META[cat.key].img} className="w-20 h-20 object-contain" alt={cat.label}/>
                 <div>
                   <p className="font-semibold text-gray-800 text-xs leading-tight">{cat.label}</p>
                   <p className="text-[10px] text-gray-400 leading-tight mt-0.5">{cat.desc}</p>
                 </div>
                 <button onClick={()=>onToggle(cat.key)}
-                  className="w-full py-2 text-xs font-bold text-white rounded-lg transition-opacity hover:opacity-90"
+                  className="w-full py-2 text-xs font-bold text-white rounded-lg transition-opacity hover:opacity-90 mt-auto"
                   style={{background:isSel?"#EF4444":GREEN}}>
                   {isSel?"Убрать":"Выбрать"}
                 </button>
