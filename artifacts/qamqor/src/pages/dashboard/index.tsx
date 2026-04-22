@@ -18,7 +18,11 @@ import {
   ArrowLeft,
   Send,
   CheckCheck,
+  Menu,
+  X,
 } from "lucide-react";
+
+import logoImg from "@/assets/services/logo.png";
 import { useAuth } from "@features/auth/model/context";
 import { useLanguage } from "@features/language/model/context";
 import { useAccessibility } from "@features/accessibility/model/context";
@@ -317,7 +321,7 @@ function ServiceCard({ img,title,desc,selected,onSelect,selectLabel,serviceKey: 
   serviceKey:string;img:string;title:string;desc:string;selected:boolean;onSelect:()=>void;selectLabel:string;
 }) {
   return (
-    <div className="flex flex-col items-center p-4 bg-white rounded-2xl cursor-pointer transition-all flex-1 min-w-[160px]"
+    <div className="flex flex-col items-center p-4 bg-white rounded-2xl cursor-pointer transition-all w-[180px] shrink-0 snap-center"
       style={selected?{outline:"2.5px solid #2563EB",boxShadow:"0 0 0 4px rgba(37,99,235,0.12)"}:{border:"1.5px solid #f0f0f0",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}
       onClick={onSelect}>
       <div className="w-full h-28 flex items-center justify-center mb-3">
@@ -731,8 +735,8 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
   return (
     <div className="space-y-4">
       <h2 className="text-base font-bold text-gray-800">{t("dashboard.createTitle")}</h2>
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-        <div className="flex gap-3">
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 overflow-hidden">
+        <div className="flex gap-3 overflow-x-auto pb-2 snap-x" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
           {services.map(s=>(
             <ServiceCard key={s.key} serviceKey={s.key} img={s.img} title={s.title} desc={s.desc}
               selected={selectedService===s.key} onSelect={()=>setSelectedService(s.key)} selectLabel={t("dashboard.selectBtn")}/>
@@ -2811,10 +2815,10 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
     <>
       <div className="space-y-4">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="flex">
+          <div className="flex overflow-x-auto snap-x" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
             {tabs.map(tab=>(
               <button key={tab.key} onClick={()=>handleTabClick(tab.key)}
-                className="px-5 py-3 text-xs font-semibold transition-colors whitespace-nowrap border-b-2"
+                className="px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 shrink-0 snap-start"
                 style={activeTab===tab.key?{color:BLUE,borderColor:BLUE,background:"white"}:{color:"#6b7280",borderColor:"transparent"}}>
                 {tab.label}
               </button>
@@ -2842,11 +2846,13 @@ function DashboardPage() {
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [pendingNav, setPendingNav] = useState<NavKey|null>(null);
   const [showNavUnsaved, setShowNavUnsaved] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const settingsSaveRef = useRef<(()=>void)|null>(null);
 
   if (!currentUser) return null;
 
   const handleNavChange = (key: NavKey) => {
+    setMobileMenuOpen(false);
     if (settingsDirty && activeNav === "dashboard") {
       setPendingNav(key);
       setShowNavUnsaved(true);
@@ -2862,28 +2868,66 @@ function DashboardPage() {
   };
 
   const headerLeft = navTitleMap[activeNav] ? (
-    <button
-      onClick={() => {
-        if (activeNav === "messages" && openedChat !== null) setOpenedChat(null);
-        else handleNavChange("dashboard");
-      }}
-      className="flex items-center gap-1.5 font-bold text-sm transition-opacity hover:opacity-75"
-      style={{ color: BLUE }}
-    >
-      <ArrowLeft className="w-4 h-4"/>
-      {navTitleMap[activeNav]}
-    </button>
+    <div className="flex items-center gap-3">
+      <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-gray-700 hover:text-blue-500 transition-colors">
+        <Menu className="w-5 h-5" />
+      </button>
+      <button
+        onClick={() => {
+          if (activeNav === "messages" && openedChat !== null) setOpenedChat(null);
+          else handleNavChange("dashboard");
+        }}
+        className="flex items-center gap-1.5 font-bold text-sm transition-opacity hover:opacity-75"
+        style={{ color: BLUE }}
+      >
+        <ArrowLeft className="w-4 h-4"/>
+        {navTitleMap[activeNav]}
+      </button>
+    </div>
   ) : (
-    <p className="text-sm font-bold" style={{ color: BLUE }}>{t("dashboard.title")}</p>
+    <div className="flex items-center gap-3">
+      <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-gray-700 hover:text-blue-500 transition-colors">
+        <Menu className="w-5 h-5" />
+      </button>
+      <p className="text-sm font-bold" style={{ color: BLUE }}>{t("dashboard.title")}</p>
+    </div>
   );
 
   return (
     <div className="min-h-screen flex bg-gray-50">
-      <Sidebar activeNav={activeNav} setActiveNav={handleNavChange} user={currentUser}/>
+      <div className="hidden md:flex">
+        <Sidebar activeNav={activeNav} setActiveNav={handleNavChange} user={currentUser}/>
+      </div>
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50">
-        <div className="p-4 flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-3 flex items-center justify-between shrink-0">
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-[100] flex bg-black/40 backdrop-blur-sm md:hidden" onClick={() => setMobileMenuOpen(false)}>
+          <div className="w-[85%] max-w-[320px] h-full bg-[#dae9f4] rounded-r-3xl overflow-hidden flex flex-col pt-6 relative shadow-2xl" onClick={e=>e.stopPropagation()}>
+            <button onClick={() => setMobileMenuOpen(false)} className="absolute top-6 right-6 text-[#4B688A] hover:text-[#2E486D] transition-colors p-1">
+               <X className="w-6 h-6"/>
+            </button>
+            <div className="px-6 mb-8 flex items-center gap-3">
+               <img src={logoImg} alt="Qamqor Logo" className="w-12 h-12 rounded-full border-2 border-[#5bb8f5] bg-white object-contain p-1 shadow-sm" />
+               <p className="font-bold text-[#2E486D] text-2xl tracking-wide uppercase">Qamqor</p>
+            </div>
+            <nav className="flex-1 px-4 flex flex-col gap-1.5">
+              <button onClick={() => handleNavChange("dashboard")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav==="dashboard"?"bg-white/60 font-bold text-[#2E486D] shadow-sm":"text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navDashboard")}</button>
+              <button onClick={() => handleNavChange("messages")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav==="messages"?"bg-white/60 font-bold text-[#2E486D] shadow-sm":"text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navMessages")}</button>
+              <button onClick={() => handleNavChange("requests")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav==="requests"?"bg-white/60 font-bold text-[#2E486D] shadow-sm":"text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navMyRequests")}</button>
+              <button onClick={() => handleNavChange("statistics")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav==="statistics"?"bg-white/60 font-bold text-[#2E486D] shadow-sm":"text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navStatistics")}</button>
+              <button onClick={() => handleNavChange("support")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav==="support"?"bg-white/60 font-bold text-[#2E486D] shadow-sm":"text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navSupport")}</button>
+            </nav>
+            <div className="p-6 pb-8 mt-auto">
+              <button onClick={() => currentUser && window.location.replace("/")} className="bg-white rounded-full px-5 py-3.5 text-red-500 font-semibold flex items-center justify-center gap-2 border border-white shadow-sm w-full hover:bg-red-50 transition-colors">
+                <LogOut className="w-4 h-4"/> {t("dashboard.navLogout")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col h-[100dvh] overflow-hidden bg-gray-50">
+        <div className="p-3 md:p-4 flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between shrink-0 p-3 md:px-5 md:py-3">
             {headerLeft}
             <div className="flex items-center gap-2">
               <AccessibilityToggle/>
