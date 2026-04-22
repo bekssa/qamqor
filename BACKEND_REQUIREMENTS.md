@@ -50,8 +50,9 @@ VITE_API_BASE_URL=http://localhost:8080/api/v1  # Или адрес сервер
 * **`POST /api/v1/reviews`**
   - **Описание**: Оставить новый отзыв. Тело: `{ authorId, targetId, rating, comment }`.
 
-### 4. Сообщения и Чаты (Messaging & WebSockets)
+### 4. Сообщения, Чаты (WebSockets) и AI-Анализ настроения (Sentiment Analysis)
 Для того чтобы пользователи могли общаться в реальном времени, бэкенду необходимо реализовать **WebSockets** (например, через Spring WebSocket + STOMP). 
+Дополнительно, **все сообщения должны проходить проверку через ИИ** (например, OpenAI API) перед отправкой. Если ИИ определяет сообщение как токсичное или мошенническое, создается алерт для администратора.
 
 **REST API (история):**
 * **`GET /api/v1/chats`**
@@ -63,7 +64,12 @@ VITE_API_BASE_URL=http://localhost:8080/api/v1  # Или адрес сервер
 * Точка подключения (Endpoint): `ws://localhost:8080/ws`
 * **Подписка (Subscribe)**: `/topic/chat/{chatId}` — сюда будут приходить новые сообщения.
 * **Отправка (Publish)**: `/app/chat_{chatId}` — на этот канал фронтенд будет пушить новое сообщение.
-* **Модель Message**: `{ "id": 1, "chatId": 12, "senderId": "u3", "text": "Здравствуйте!", "timestamp": "2026-04-17T15:00:00Z" }`
+* **Модель Message**: `{ "id": 1, "chatId": 12, "senderId": "u3", "text": "Здравствуйте!", "timestamp": "2026-04-17T15:00:00Z", "isFlagged": false }`
+
+**Админские алерты (AI-Sentiment Analysis):**
+* **`GET /api/v1/admin/alerts`**
+  - **Описание**: Получить список подозрительных сообщений, выявленных ИИ.
+  - **Ответ**: Массив объектов `{ alertId, chatId, messageText, reason, confidenceScore }`.
 
 ---
 
