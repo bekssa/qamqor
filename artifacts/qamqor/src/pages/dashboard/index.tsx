@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Client } from "@stomp/stompjs";
-import type { Chat, Message } from "@shared/api";
+import type { Chat, Message, ResponseStatus } from "@shared/api";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useLocation } from "wouter";
@@ -65,7 +65,7 @@ const SERVICE_IMG: Record<string, string> = {
   household: imgHousehold, medical: imgMedical, escort: imgEscort, homework: imgHomeWork, shopping: imgShopping,
 };
 
-function mapBackendRequest(r: { id: string; title: string; description: string; category: string; location: string; price?: number; scheduledDate?: string; status: string; createdAt: string }): ServiceRequest {
+function mapBackendRequest(r: { id: string; title: string; description: string; category: string; location: string; price?: number; scheduledDate?: string; status: string; createdAt: string; executorName?: string }): ServiceRequest {
   const d = new Date(r.createdAt);
   const dateCreated = `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
   const statusMap: Record<string, RequestStatus> = { open: "active", in_progress: "active", completed: "completed", cancelled: "cancelled" };
@@ -80,7 +80,7 @@ function mapBackendRequest(r: { id: string; title: string; description: string; 
     dateExecution: r.scheduledDate ?? "",
     address: r.location ?? "",
     city: "",
-    helper: "",
+    helper: r.executorName ?? "",
     status: statusMap[r.status] ?? "active",
   };
 }
@@ -987,7 +987,7 @@ function EditRequestModal({
 }
 
 /* ─────────────── completion modal ─────────────── */
-function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: () => void }) {
+function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (priceOverride?: number) => void }) {
   const { t } = useLanguage();
   const [agreedPrice, setAgreedPrice] = useState<"yes"|"no">("yes");
   const [finalPrice, setFinalPrice] = useState("");
@@ -1023,7 +1023,11 @@ function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
           </div>
         )}
 
-        <button onClick={onSubmit}
+        <button
+          onClick={() => {
+            const override = agreedPrice === "no" && finalPrice ? parseInt(finalPrice, 10) : undefined;
+            onSubmit(override);
+          }}
           className="px-10 py-3 text-white text-sm font-bold rounded-xl uppercase tracking-wide transition-opacity hover:opacity-90"
           style={{background:GREEN}}>
           {t("dashboard.completionSubmit")}
@@ -1146,8 +1150,8 @@ function HelperReqTable({ reqs, onComplete }: {
   );
 }
 
-function RequestDetailsModal({ req, onClose, onChat, onAccept, isAccepted }: {
-  req: HelperRequest; onClose: () => void; onChat: () => void; onAccept: () => void; isAccepted: boolean;
+function RequestDetailsModal({ req, onClose, onChat, onRequestRespond, responseStatus }: {
+  req: HelperRequest; onClose: () => void; onChat: () => void; onRequestRespond: () => void; responseStatus: ResponseStatus | null;
 }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
@@ -1206,11 +1210,54 @@ function RequestDetailsModal({ req, onClose, onChat, onAccept, isAccepted }: {
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             Написать
           </button>
-          <button onClick={() => { onAccept(); onClose(); }}
-            className="px-5 py-2.5 rounded-xl font-bold text-sm transition-opacity hover:opacity-90 flex items-center justify-center gap-2 text-white"
-            style={{background: isAccepted ? "#2C9C42" : "#22C55E", border:`1px solid ${isAccepted ? "#2C9C42" : "#22C55E"}`}}>
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            {isAccepted ? "Принято" : "Принять"}
+          {responseStatus === "PENDING" && (
+            <button disabled className="px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+              style={{ background: BLUE, color: "white", border: `1px solid ${BLUE}`, cursor: "default" }}>
+              Откликнуто
+            </button>
+          )}
+          {responseStatus === "ACCEPTED" && (
+            <button disabled className="px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+              style={{ background: "#22C55E", color: "white", border: "1px solid #22C55E", cursor: "default" }}>
+              Принято
+            </button>
+          )}
+          {responseStatus === "DECLINED" && (
+            <button disabled className="px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+              style={{ background: "#EF4444", color: "white", border: "1px solid #EF4444", cursor: "default" }}>
+              Отклонена
+            </button>
+          )}
+          {!responseStatus && (
+            <button onClick={onRequestRespond}
+              className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
+              style={{ background: "white", color: "#22C55E", border: "1px solid #22C55E", cursor: "pointer" }}>
+              Откликнуться
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmRespondModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-5 text-center space-y-2">
+          <p className="font-bold text-gray-900 text-base">Откликнуться на заявку?</p>
+          <p className="text-sm text-gray-500">Заказчик получит уведомление о вашем отклике. Подтвердите действие.</p>
+        </div>
+        <div className="px-6 pb-5 flex gap-3">
+          <button onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl font-semibold text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+            Отмена
+          </button>
+          <button onClick={onConfirm}
+            className="flex-1 py-2.5 rounded-xl font-semibold text-sm text-white transition-opacity hover:opacity-90"
+            style={{ background: BLUE }}>
+            Подтверждаю
           </button>
         </div>
       </div>
@@ -1218,13 +1265,54 @@ function RequestDetailsModal({ req, onClose, onChat, onAccept, isAccepted }: {
   );
 }
 
-function HelperAvailableTable({ reqs, onChat }: { reqs: HelperRequest[]; onChat: (authorId: string) => void }) {
+function HelperAvailableTable({ reqs, onChat, onAccept, responseStatuses, loadingRespondId }: {
+  reqs: HelperRequest[];
+  onChat: (authorId: string) => void;
+  onAccept: (id: string) => void;
+  responseStatuses: Record<string, ResponseStatus>;
+  loadingRespondId: string | null;
+}) {
   const { t } = useLanguage();
   const COLS = [t("dashboard.colDescription"), t("dashboard.colDateReg"), t("dashboard.colDateExec"), t("dashboard.colPrice"), t("dashboard.colAddress")];
-  const [accepted, setAccepted] = useState<string[]>([]);
   const [viewingReq, setViewingReq] = useState<HelperRequest | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  const visible = reqs;
+  function respondBtn(reqId: string, compact = true) {
+    const status = responseStatuses[reqId];
+    const loading = loadingRespondId === reqId;
+    if (status === "PENDING") return (
+      <button disabled className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold" : "px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"}
+        style={{ background: BLUE, color: "white", border: `1px solid ${BLUE}`, cursor: "default" }}>
+        Откликнуто
+      </button>
+    );
+    if (status === "ACCEPTED") return (
+      <button disabled className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold" : "px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"}
+        style={{ background: "#22C55E", color: "white", border: "1px solid #22C55E", cursor: "default" }}>
+        Принято
+      </button>
+    );
+    if (status === "DECLINED") return (
+      <button disabled className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold" : "px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"}
+        style={{ background: "#EF4444", color: "white", border: "1px solid #EF4444", cursor: "default" }}>
+        Отклонена
+      </button>
+    );
+    if (loading) return (
+      <button disabled className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold" : "px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"}
+        style={{ background: "white", color: "#9ca3af", border: "1px solid #d1d5db", cursor: "wait" }}>
+        ...
+      </button>
+    );
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); setConfirmingId(reqId); }}
+        className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold transition-all" : "px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"}
+        style={{ background: "white", color: "#22C55E", border: "1px solid #22C55E", cursor: "pointer" }}>
+        Откликнуться
+      </button>
+    );
+  }
 
   return (
     <div className="overflow-x-auto px-4 pt-3 pb-1">
@@ -1249,7 +1337,7 @@ function HelperAvailableTable({ reqs, onChat }: { reqs: HelperRequest[]; onChat:
           </tr>
         </thead>
         <tbody>
-          {visible.map(req => (
+          {reqs.map(req => (
             <tr key={req.id} onClick={() => setViewingReq(req)} className="hover:bg-gray-50 cursor-pointer transition-colors">
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-start gap-2.5">
@@ -1278,11 +1366,7 @@ function HelperAvailableTable({ reqs, onChat }: { reqs: HelperRequest[]; onChat:
                     style={{background:"#FEF9C3", border:"1px solid #FDE047"}} title="Написать">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); setAccepted(a => [...a, req.id]); }}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
-                    style={{background: accepted.includes(req.id) ? GREEN : "#DCFCE7", border:`1px solid ${accepted.includes(req.id) ? GREEN : "#86EFAC"}`}} title="Принять">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke={accepted.includes(req.id) ? "white" : "#22C55E"} strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                  </button>
+                  {respondBtn(req.id)}
                 </div>
               </td>
             </tr>
@@ -1290,29 +1374,77 @@ function HelperAvailableTable({ reqs, onChat }: { reqs: HelperRequest[]; onChat:
         </tbody>
       </table>
       {viewingReq && (
-        <RequestDetailsModal 
-          req={viewingReq} 
-          onClose={() => setViewingReq(null)} 
-          onChat={() => onChat(viewingReq.authorId)} 
-          onAccept={() => setAccepted(a => [...a, viewingReq.id])} 
-          isAccepted={accepted.includes(viewingReq.id)} 
+        <RequestDetailsModal
+          req={viewingReq}
+          onClose={() => setViewingReq(null)}
+          onChat={() => onChat(viewingReq.authorId)}
+          onRequestRespond={() => { setViewingReq(null); setConfirmingId(viewingReq.id); }}
+          responseStatus={responseStatuses[viewingReq.id] ?? null}
+        />
+      )}
+      {confirmingId && (
+        <ConfirmRespondModal
+          onConfirm={() => { onAccept(confirmingId); setConfirmingId(null); }}
+          onCancel={() => setConfirmingId(null)}
         />
       )}
     </div>
   );
 }
 
-function HelperDashboard({ user, onOpenChat }: { user: { firstName: string }; onOpenChat: (chat: Chat) => void }) {
+function HelperDashboard({ user, onOpenChat, cancelledRequestId, declinedRequestId, acceptedRequestId, activeReqsVersion }: {
+  user: { firstName: string };
+  onOpenChat: (chat: Chat) => void;
+  cancelledRequestId?: string | null;
+  declinedRequestId?: string | null;
+  acceptedRequestId?: string | null;
+  activeReqsVersion?: number;
+}) {
   const { t } = useLanguage();
   const [activeReqs, setActiveReqs] = useState<HelperRequest[]>([]);
   const [availableReqs, setAvailableReqs] = useState<HelperRequest[]>([]);
+  const [responseStatuses, setResponseStatuses] = useState<Record<string, ResponseStatus>>({});
+  const [loadingRespondId, setLoadingRespondId] = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
 
   useEffect(() => {
-    api.getAssignedRequests().then(list => setActiveReqs(list.map(mapHelperRequest))).catch(() => {});
+    api.getAssignedRequests()
+      .then(list => setActiveReqs(list.filter((r: any) => r.status === "in_progress").map(mapHelperRequest)))
+      .catch(() => {});
     api.getAvailableRequests().then(list => setAvailableReqs(list.map(mapHelperRequest))).catch(() => {});
+    api.getMyResponses().then(list => {
+      const map: Record<string, ResponseStatus> = {};
+      list.forEach(r => { map[r.requestId] = r.status; });
+      setResponseStatuses(map);
+    }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (cancelledRequestId) {
+      setActiveReqs(prev => prev.filter(r => r.id !== cancelledRequestId));
+    }
+  }, [cancelledRequestId]);
+
+  useEffect(() => {
+    if (declinedRequestId) {
+      setResponseStatuses(prev => ({ ...prev, [declinedRequestId]: "DECLINED" }));
+    }
+  }, [declinedRequestId]);
+
+  useEffect(() => {
+    if (acceptedRequestId) {
+      setResponseStatuses(prev => ({ ...prev, [acceptedRequestId]: "ACCEPTED" }));
+    }
+  }, [acceptedRequestId]);
+
+  useEffect(() => {
+    if (activeReqsVersion && activeReqsVersion > 0) {
+      api.getAssignedRequests()
+        .then(list => setActiveReqs(list.filter((r: any) => r.status === "in_progress").map(mapHelperRequest)))
+        .catch(() => {});
+    }
+  }, [activeReqsVersion]);
 
   const handleChat = async (authorId: string) => {
     try {
@@ -1323,9 +1455,28 @@ function HelperDashboard({ user, onOpenChat }: { user: { firstName: string }; on
     }
   };
 
+  const handleAccept = async (id: string) => {
+    setLoadingRespondId(id);
+    try {
+      await api.respondToRequest(id);
+      setResponseStatuses(prev => ({ ...prev, [id]: "PENDING" }));
+    } catch (e) {
+      console.error("[RESPOND] failed", e);
+    } finally {
+      setLoadingRespondId(null);
+    }
+  };
+
   const handleComplete = (id: string) => setCompletingId(id);
-  const handleSubmitCompletion = () => {
-    setActiveReqs(r => r.filter(x => x.id !== completingId));
+  const handleSubmitCompletion = async (priceOverride?: number) => {
+    if (!completingId) return;
+    try {
+      await api.updateRequestStatus(completingId, "completed", priceOverride);
+      const active = await api.getAssignedRequests();
+      setActiveReqs(active.filter((r: any) => r.status === "in_progress").map(mapHelperRequest));
+    } catch (e) {
+      console.error("[COMPLETE] failed", e);
+    }
     setCompletingId(null);
   };
 
@@ -1365,11 +1516,11 @@ function HelperDashboard({ user, onOpenChat }: { user: { firstName: string }; on
             )}
           </div>
         </div>
-        <HelperAvailableTable reqs={availableReqs} onChat={handleChat}/>
+        <HelperAvailableTable reqs={availableReqs} onChat={handleChat} onAccept={handleAccept} responseStatuses={responseStatuses} loadingRespondId={loadingRespondId}/>
       </div>
 
       {completingId !== null && (
-        <CompletionModal onClose={() => setCompletingId(null)} onSubmit={handleSubmitCompletion}/>
+        <CompletionModal onClose={() => setCompletingId(null)} onSubmit={(price) => handleSubmitCompletion(price)}/>
       )}
     </div>
   );
@@ -1527,12 +1678,14 @@ function RequestsTable({
   requests,
   onCancel,
   emptyText,
+  helperLabel = "Помощник",
 }: {
   requests: ServiceRequest[];
   onCancel?: (id: string) => void;
   emptyText: string;
+  helperLabel?: string;
 }) {
-  const COLS = ["Наименование", "Дата регистрации", "Дата выполнения услуг", "Цена", "Помощник"];
+  const COLS = ["Наименование", "Дата регистрации", "Дата выполнения услуг", "Цена", helperLabel];
 
   return (
     <div className="overflow-x-auto px-4 pt-3 pb-1">
@@ -1665,6 +1818,65 @@ function MyRequestsContent({ userId: _userId }: { userId: string }) {
       <Section title="Активные заявки"   color={GREEN}      reqs={active}    showCancel />
       <Section title="Прошлые заявки"    color="#374151"    reqs={completed}            />
       <Section title="Отмененные заявки" color="#EF4444"    reqs={cancelled}            />
+    </div>
+  );
+}
+
+function mapAssignedRequest(r: any): ServiceRequest {
+  return { ...mapBackendRequest(r), helper: r.authorName ?? "" };
+}
+
+function mapBackendNotification(n: { id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; responseId: string | null; createdAt: string }): NotifItem {
+  const d = new Date(n.createdAt);
+  const time = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  const base = { id: n.id, time, timestamp: n.createdAt, service: n.requestTitle };
+
+  if (n.type === "NEW_RESPONSE")
+    return { ...base, type: "new_response", helperName: n.actorName ?? "" };
+  if (n.type === "REQUEST_ACCEPTED")
+    return { ...base, type: "accepted", helperName: n.actorName ?? "" };
+  if (n.type === "RESPONSE_ACCEPTED")
+    return { ...base, type: "response_accepted", helperName: n.actorName ?? "" };
+  if (n.type === "RESPONSE_DECLINED")
+    return { ...base, type: "response_declined", helperName: n.actorName ?? "" };
+  if (n.type === "REQUEST_CANCELLED")
+    return { ...base, type: "cancelled" };
+  return { ...base, type: "accepted" };
+}
+
+function MyVolunteerRequestsContent({ cancelledRequestId }: { cancelledRequestId?: string | null }) {
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+
+  useEffect(() => {
+    api.getAssignedRequests().then(list => setRequests(list.map(mapAssignedRequest))).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (cancelledRequestId) {
+      api.getAssignedRequests()
+        .then(list => setRequests(list.map(mapAssignedRequest)))
+        .catch(() => {});
+    }
+  }, [cancelledRequestId]);
+
+  const active    = requests.filter(r => (r.status ?? "active") === "active");
+  const completed = requests.filter(r => r.status === "completed");
+  const cancelled = requests.filter(r => r.status === "cancelled");
+
+  const Section = ({ title, color, reqs }: { title: string; color: string; reqs: ServiceRequest[] }) => (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100">
+        <h3 className="font-bold text-sm" style={{ color }}>{title}</h3>
+      </div>
+      <RequestsTable requests={reqs} emptyText="Нет заявок" helperLabel="Заказчик"/>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <Section title="Активные заявки"    color={GREEN}      reqs={active}    />
+      <Section title="Прошлые заявки"     color="#374151"    reqs={completed} />
+      <Section title="Отменённые заявки"  color="#EF4444"    reqs={cancelled} />
     </div>
   );
 }
@@ -2078,9 +2290,10 @@ function FindHelpersTab({ userId: _userId }: { userId: string }) {
 
 /* ─────────────── notifications tab ─────────────── */
 interface NotifItem {
-  id: number;
-  type: "accepted" | "new_response" | "reminder" | "rejected" | "message";
+  id: string | number;
+  type: "accepted" | "new_response" | "reminder" | "rejected" | "message" | "cancelled" | "response_accepted" | "response_declined";
   time: string;
+  timestamp: string;
   helperName?: string;
   service?: string;
   reason?: string;
@@ -2088,22 +2301,31 @@ interface NotifItem {
   rating?: number;
   preview?: string;
   date?: string;
+  responseId?: string;
+  responseStatus?: "accepted" | "declined";
 }
 
+const _MOCK_TS = new Date().toISOString();
 const NOTIFS_TODAY: NotifItem[] = [
-  { id:1, type:"accepted",     helperName:"Аймердинов Амир",    service:"Покупка",         time:"12:45" },
-  { id:2, type:"new_response", helperName:"Айбергенова Асылай", category:"Бытовая помощь", rating:4.8,  time:"11:05" },
-  { id:3, type:"reminder",     preview:"Сегодня в 16:00 уборка квартиры.",                 time:"" },
+  { id:1, type:"accepted",     helperName:"Аймердинов Амир",    service:"Покупка",         time:"12:45", timestamp:_MOCK_TS },
+  { id:2, type:"new_response", helperName:"Айбергенова Асылай", category:"Бытовая помощь", rating:4.8,  time:"11:05", timestamp:_MOCK_TS },
+  { id:3, type:"reminder",     preview:"Сегодня в 16:00 уборка квартиры.",                 time:"",      timestamp:_MOCK_TS },
 ];
 const NOTIFS_YESTERDAY: NotifItem[] = [
-  { id:4, type:"rejected",  helperName:"Береке Мадина",  service:"Покупка лекарств", reason:"По личным причинам", time:"18:05" },
-  { id:5, type:"accepted",  helperName:"Куаныш Дастан",  service:"Бытовая помощь",                                time:"18:05" },
+  { id:4, type:"rejected",  helperName:"Береке Мадина",  service:"Покупка лекарств", reason:"По личным причинам", time:"18:05", timestamp:_MOCK_TS },
+  { id:5, type:"accepted",  helperName:"Куаныш Дастан",  service:"Бытовая помощь",                                time:"18:05", timestamp:_MOCK_TS },
 ];
 const NOTIFS_EARLIER: NotifItem[] = [
-  { id:6, type:"message", helperName:"Бакыт Диас", preview:"Я уже купил всё необходимое", date:"28 марта", time:"10:20" },
+  { id:6, type:"message", helperName:"Бакыт Диас", preview:"Я уже купил всё необходимое", date:"28 марта", time:"10:20", timestamp:_MOCK_TS },
 ];
 
-function NotifCard({ n, onView }: { n: NotifItem; onView?: () => void }) {
+function NotifCard({ n, onView, onAcceptResponse, onDeclineResponse, processingResponseId }: {
+  n: NotifItem;
+  onView?: () => void;
+  onAcceptResponse?: (responseId: string) => void;
+  onDeclineResponse?: (responseId: string) => void;
+  processingResponseId?: string | null;
+}) {
   const h = n.helperName ? MOCK_HELPERS.find(x=>x.name===n.helperName) : undefined;
   const colorId = h?.id ?? 0;
 
@@ -2132,20 +2354,69 @@ function NotifCard({ n, onView }: { n: NotifItem; onView?: () => void }) {
         <svg className="w-4 h-4" fill="none" stroke="#EAB308" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold text-gray-900 mb-2">Новый отклик на заявку</p>
-        <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+        <p className="text-xs font-semibold text-gray-900 mb-1">Новый отклик на заявку</p>
+        {n.service&&<p className="text-[10px] text-gray-400 mb-2">Заявка: {n.service}</p>}
+        <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 mb-2">
           {n.helperName&&<HelperAvatar name={n.helperName} size={32} colorId={colorId}/>}
-          <div>
-            <p className="text-[11px] font-semibold text-gray-800 leading-tight">{n.helperName}</p>
-            <p className="text-[10px] text-gray-400 leading-tight">{n.category}</p>
-            <StarRating rating={n.rating??4.8}/>
-          </div>
+          <p className="text-[11px] font-semibold text-gray-800 leading-tight">{n.helperName}</p>
         </div>
+        {n.responseStatus === "accepted" && (
+          <p className="text-[11px] font-semibold" style={{color:GREEN}}>✓ Вы приняли отклик</p>
+        )}
+        {n.responseStatus === "declined" && (
+          <p className="text-[11px] font-semibold" style={{color:"#EF4444"}}>✗ Вы отклонили отклик</p>
+        )}
+        {!n.responseStatus && n.responseId && (() => {
+          const isProcessing = processingResponseId === n.responseId;
+          return (
+            <div className="flex gap-2">
+              <button
+                onClick={() => !isProcessing && onAcceptResponse?.(n.responseId!)}
+                disabled={isProcessing}
+                className="px-3 py-1 text-[11px] font-semibold rounded-lg text-white transition-opacity hover:opacity-90"
+                style={{background: isProcessing ? "#9ca3af" : GREEN, cursor: isProcessing ? "wait" : "pointer"}}>
+                {isProcessing ? "..." : "Принять"}
+              </button>
+              <button
+                onClick={() => !isProcessing && onDeclineResponse?.(n.responseId!)}
+                disabled={isProcessing}
+                className="px-3 py-1 text-[11px] font-semibold rounded-lg border transition-colors hover:bg-red-50"
+                style={{color: isProcessing ? "#9ca3af" : "#EF4444", borderColor: isProcessing ? "#d1d5db" : "#fecaca", cursor: isProcessing ? "wait" : "pointer"}}>
+                {isProcessing ? "..." : "Отклонить"}
+              </button>
+            </div>
+          );
+        })()}
       </div>
-      <div className="flex flex-col items-end gap-1.5 shrink-0 ml-2">
-        {n.time&&<span className="text-[10px] text-gray-400">{n.time}</span>}
-        {onView&&<button onClick={onView} className="px-3 py-1 text-[10px] font-semibold rounded-lg whitespace-nowrap border border-gray-200 hover:bg-gray-50 transition-colors text-gray-700">Посмотреть</button>}
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+    </div>
+  );
+
+  if(n.type==="response_accepted") return (
+    <div className="flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#DCFCE7"}}>
+        <svg className="w-4 h-4" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-900">Ваш отклик принят</p>
+        {n.service&&<p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+        {n.helperName&&<p className="text-[10px] text-gray-400">Принял(а): {n.helperName}</p>}
+      </div>
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+    </div>
+  );
+
+  if(n.type==="response_declined") return (
+    <div className="flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#FEE2E2"}}>
+        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-900">Ваш отклик отклонён</p>
+        {n.service&&<p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+        {n.helperName&&<p className="text-[10px] text-gray-400">Отклонил(а): {n.helperName}</p>}
+      </div>
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
     </div>
   );
 
@@ -2189,56 +2460,68 @@ function NotifCard({ n, onView }: { n: NotifItem; onView?: () => void }) {
     </div>
   );
 
-  return null;
-}
-
-function NotificationsTab() {
-  const [responseHelper, setResponseHelper] = useState<MockHelper|null>(null);
-
-  const handleViewResponse=(name:string)=>{
-    const found=MOCK_HELPERS.find(h=>h.name===name);
-    if(found) setResponseHelper(found);
-  };
-
-  const renderGroup=(title:string, items:NotifItem[], twoCol=false)=>(
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100">
-        <h3 className="font-bold text-sm text-gray-800">{title}</h3>
+  if(n.type==="cancelled") return (
+    <div className="flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#FEE2E2"}}>
+        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </div>
-      {twoCol ? (
-        <div className="grid grid-cols-2 gap-3 p-4">
-          {items.map(n=>(
-            <div key={n.id} className="border border-gray-100 rounded-xl p-4">
-              <NotifCard n={n} onView={n.type==="new_response"&&n.helperName?()=>handleViewResponse(n.helperName!):undefined}/>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="px-5 py-4 space-y-5">
-          {items.map(n=>(
-            <NotifCard key={n.id} n={n} onView={n.type==="new_response"&&n.helperName?()=>handleViewResponse(n.helperName!):undefined}/>
-          ))}
-        </div>
-      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-900">Заявка отменена заказчиком</p>
+        {n.service&&<p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+      </div>
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
     </div>
   );
 
-  return (
-    <>
-      <div className="space-y-4">
-        {renderGroup("Сегодня", NOTIFS_TODAY)}
-        {renderGroup("Вчера",  NOTIFS_YESTERDAY, true)}
-        {renderGroup("Ранее",  NOTIFS_EARLIER)}
+  return null;
+}
+
+function NotificationsTab({ realtimeNotifs, onAcceptResponse, onDeclineResponse, processingResponseId }: {
+  realtimeNotifs: NotifItem[];
+  onAcceptResponse: (responseId: string) => void;
+  onDeclineResponse: (responseId: string) => void;
+  processingResponseId?: string | null;
+}) {
+  const todayStr = new Date().toDateString();
+
+  const groups = new Map<string, NotifItem[]>();
+  realtimeNotifs.forEach(n => {
+    const d = new Date(n.timestamp);
+    const label = d.toDateString() === todayStr
+      ? "Сегодня"
+      : d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+    groups.set(label, [...(groups.get(label) ?? []), n]);
+  });
+
+  if (groups.size === 0) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-10 text-center">
+        <p className="text-gray-400 text-sm">Уведомлений пока нет</p>
       </div>
-      {responseHelper&&(
-        <ConfirmHelperModal
-          helper={responseHelper}
-          onClose={()=>setResponseHelper(null)}
-          onConfirm={()=>setResponseHelper(null)}
-          mode="response"
-        />
-      )}
-    </>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {[...groups.entries()].map(([label, items]) => (
+        <div key={label} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100">
+            <h3 className="font-bold text-sm text-gray-800">{label}</h3>
+          </div>
+          <div className="px-5 py-4 space-y-5">
+            {items.map(n => (
+              <NotifCard
+                key={n.id}
+                n={n}
+                onAcceptResponse={onAcceptResponse}
+                onDeclineResponse={onDeclineResponse}
+                processingResponseId={processingResponseId}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -2753,6 +3036,73 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
   const [settingsDirtyLocal, setSettingsDirtyLocal] = useState(false);
   const [pendingTab, setPendingTab] = useState<TabKey|null>(null);
   const [showUnsavedTab, setShowUnsavedTab] = useState(false);
+  const [realtimeNotifs, setRealtimeNotifs] = useState<NotifItem[]>([]);
+  const [cancelledRequestId, setCancelledRequestId] = useState<string | null>(null);
+  const [declinedRequestId, setDeclinedRequestId] = useState<string | null>(null);
+  const [acceptedRequestId, setAcceptedRequestId] = useState<string | null>(null);
+  const [activeReqsVersion, setActiveReqsVersion] = useState(0);
+  const notifStompRef = useRef<Client | null>(null);
+
+  useEffect(() => {
+    api.getNotifications()
+      .then(list => setRealtimeNotifs(list.map(mapBackendNotification)))
+      .catch(() => {});
+  }, [userId]);
+
+  useEffect(() => {
+    const wsUrl = api.getWsUrl();
+    if (!wsUrl) return;
+    const client = new Client({
+      brokerURL: wsUrl,
+      reconnectDelay: 5000,
+      onConnect: () => {
+        client.subscribe(`/topic/notifications/${userId}`, (msg) => {
+          try {
+            const data = JSON.parse(msg.body);
+            const now = new Date();
+            const time = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+            const ts = now.toISOString();
+
+            if (data.type === "NEW_RESPONSE") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "new_response" as const,
+                helperName: data.volunteerName, service: data.requestTitle,
+                responseId: data.responseId, time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "REQUEST_ACCEPTED") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "accepted" as const,
+                helperName: data.volunteerName, service: data.requestTitle,
+                time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "RESPONSE_ACCEPTED") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "response_accepted" as const,
+                service: data.requestTitle, helperName: data.volunteerName, time, timestamp: ts,
+              }, ...prev]);
+              setActiveReqsVersion(v => v + 1);
+              setAcceptedRequestId(data.requestId);
+            } else if (data.type === "RESPONSE_DECLINED") {
+              setDeclinedRequestId(data.requestId);
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "response_declined" as const,
+                service: data.requestTitle, helperName: data.volunteerName, time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "REQUEST_CANCELLED") {
+              setCancelledRequestId(data.requestId);
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "cancelled" as const,
+                service: data.requestTitle, time, timestamp: ts,
+              }, ...prev]);
+            }
+          } catch { /* ignore malformed messages */ }
+        });
+      },
+    });
+    client.activate();
+    notifStompRef.current = client;
+    return () => { client.deactivate(); };
+  }, [userId]);
 
   useEffect(() => {
     if (isVolunteer && activeTab === "search") setActiveTab("create");
@@ -2789,6 +3139,40 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
     setOpenedChat(chat);
   };
 
+  const [processingResponseId, setProcessingResponseId] = useState<string | null>(null);
+
+  const handleAcceptResponse = async (responseId: string) => {
+    setProcessingResponseId(responseId);
+    try {
+      await api.acceptResponse(responseId);
+      setRealtimeNotifs(prev =>
+        prev.map(n => n.responseId === responseId
+          ? { ...n, responseId: undefined, responseStatus: "accepted" as const }
+          : n)
+      );
+    } catch (e) {
+      console.error("[RESPONSE] accept failed", e);
+    } finally {
+      setProcessingResponseId(null);
+    }
+  };
+
+  const handleDeclineResponse = async (responseId: string) => {
+    setProcessingResponseId(responseId);
+    try {
+      await api.declineResponse(responseId);
+      setRealtimeNotifs(prev =>
+        prev.map(n => n.responseId === responseId
+          ? { ...n, responseId: undefined, responseStatus: "declined" as const }
+          : n)
+      );
+    } catch (e) {
+      console.error("[RESPONSE] decline failed", e);
+    } finally {
+      setProcessingResponseId(null);
+    }
+  };
+
   if (activeNav==="messages") {
     if (openedChat !== null) {
       return (
@@ -2800,7 +3184,9 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
     return <MessagesContent onOpenChat={setOpenedChat} myId={userId}/>;
   }
 
-  if (activeNav==="requests") return <MyRequestsContent userId={userId}/>;
+  if (activeNav==="requests") return isVolunteer
+    ? <MyVolunteerRequestsContent cancelledRequestId={cancelledRequestId}/>
+    : <MyRequestsContent userId={userId}/>;
 
   if (activeNav!=="dashboard") return <ComingSoon/>;
 
@@ -2825,9 +3211,9 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
             ))}
           </div>
         </div>
-        {activeTab==="create"        && (isVolunteer ? <HelperDashboard user={{firstName}} onOpenChat={handleOpenChat}/> : <CreateRequestTab userId={userId}/>)}
+        {activeTab==="create"        && (isVolunteer ? <HelperDashboard user={{firstName}} onOpenChat={handleOpenChat} cancelledRequestId={cancelledRequestId} declinedRequestId={declinedRequestId} acceptedRequestId={acceptedRequestId} activeReqsVersion={activeReqsVersion}/> : <CreateRequestTab userId={userId}/>)}
         {activeTab==="search"        && <FindHelpersTab userId={userId}/>}
-        {activeTab==="notifications" && <NotificationsTab/>}
+        {activeTab==="notifications" && <NotificationsTab realtimeNotifs={realtimeNotifs} onAcceptResponse={handleAcceptResponse} onDeclineResponse={handleDeclineResponse} processingResponseId={processingResponseId}/>}
         {activeTab==="settings"      && <AccountSettingsTab onDirtyChange={handleDirtyChange} settingsSaveRef={settingsSaveRef}/>}
       </div>
       {showUnsavedTab && (

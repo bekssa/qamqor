@@ -2,6 +2,7 @@ package kz.qamqor.service;
 
 import kz.qamqor.dto.request.CreateServiceRequestDto;
 import kz.qamqor.dto.request.UpdateStatusRequest;
+import kz.qamqor.dto.response.NotificationDto;
 import kz.qamqor.dto.response.ServiceRequestDto;
 import kz.qamqor.entity.ServiceRequest;
 import kz.qamqor.entity.User;
@@ -12,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +27,8 @@ public class ServiceRequestService {
 
     private final ServiceRequestRepository requestRepository;
     private final UserRepository userRepository;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationService notificationService;
 
     public List<ServiceRequestDto> getAll(User currentUser) {
         List<ServiceRequest> requests = (currentUser.getRole() == User.Role.VOLUNTEER)
@@ -82,9 +86,57 @@ public class ServiceRequestService {
     public ServiceRequestDto updateStatus(String id, UpdateStatusRequest dto) {
         ServiceRequest request = findOrThrow(id);
         ServiceRequest.Status prev = request.getStatus();
+
+        // Read executor ID before save to avoid lazy-load issues after flush
+        String executorId = (request.getExecutor() != null) ? request.getExecutor().getId() : null;
+
         request.setStatus(dto.status());
+        if (dto.price() != null) {
+            request.setPrice(dto.price());
+        }
         ServiceRequestDto result = ServiceRequestDto.from(requestRepository.save(request));
-        log.info("[REQUEST] Status updated id={} {} -> {}", id, prev, dto.status());
+        log.info("[REQUEST] Status updated id={} {} -> {} price={}", id, prev, dto.status(), dto.price());
+
+        if (dto.status() == ServiceRequest.Status.CANCELLED && executorId != null) {
+            notificationService.save(executorId, "REQUEST_CANCELLED", request.getId(), request.getTitle(), null);
+            messagingTemplate.convertAndSend(
+                "/topic/notifications/" + executorId,
+                new NotificationDto("REQUEST_CANCELLED", request.getId(), request.getTitle(), null, null)
+            );
+            log.info("[REQUEST] Cancel notified volunteerId={}", executorId);
+        }
+
+        return result;
+    }
+
+    @Transactional
+    public ServiceRequestDto acceptRequest(String id, User volunteer) {
+        ServiceRequest request = findOrThrow(id);
+
+        if (request.getStatus() != ServiceRequest.Status.OPEN) {
+            throw new AppException("Request is not available for acceptance", HttpStatus.CONFLICT);
+        }
+
+        User executor = userRepository.findById(volunteer.getId())
+            .orElseThrow(() -> new AppException("Volunteer not found", HttpStatus.NOT_FOUND));
+
+        request.setExecutor(executor);
+        request.setStatus(ServiceRequest.Status.IN_PROGRESS);
+        ServiceRequestDto result = ServiceRequestDto.from(requestRepository.save(request));
+
+        String vfn = executor.getFirstName();
+        String vln = executor.getLastName();
+        String volunteerName = ((vfn != null ? vfn : "") + " " + (vln != null ? vln : "")).trim();
+        if (volunteerName.isEmpty()) volunteerName = executor.getName() != null ? executor.getName() : executor.getEmail();
+
+        String authorId = request.getAuthor().getId();
+        notificationService.save(authorId, "REQUEST_ACCEPTED", request.getId(), request.getTitle(), volunteerName);
+        messagingTemplate.convertAndSend(
+            "/topic/notifications/" + authorId,
+            new NotificationDto("REQUEST_ACCEPTED", request.getId(), request.getTitle(), volunteerName, null)
+        );
+
+        log.info("[REQUEST] Accepted id={} volunteerId={}", id, volunteer.getId());
         return result;
     }
 

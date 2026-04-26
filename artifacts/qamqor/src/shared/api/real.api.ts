@@ -25,7 +25,10 @@ export class RealKamkorApi implements IKamkorApi {
 
     getWsUrl(): string {
         const httpBase = this.baseUrl.replace(/\/api\/v1\/?$/, '');
-        return httpBase.replace(/^http/, (p) => p === 'https' ? 'wss' : 'ws') + '/ws-native';
+        const wsBase = httpBase
+            .replace(/^https:\/\//, 'wss://')
+            .replace(/^http:\/\//, 'ws://');
+        return wsBase + '/ws-native';
     }
 
     private async fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -48,7 +51,8 @@ export class RealKamkorApi implements IKamkorApi {
             throw new Error(`API Error ${response.status}: ${body || response.statusText}`);
         }
 
-        return response.json();
+        const text = await response.text();
+        return (text ? JSON.parse(text) : undefined) as T;
     }
 
     // ── Profile ───────────────────────────────────────────────────────────────
@@ -225,11 +229,33 @@ export class RealKamkorApi implements IKamkorApi {
         });
     }
 
-    async updateRequestStatus(id: string, status: ServiceRequest['status']): Promise<ServiceRequest> {
+    async updateRequestStatus(id: string, status: ServiceRequest['status'], price?: number): Promise<ServiceRequest> {
+        const body: Record<string, unknown> = { status: status.toUpperCase() };
+        if (price !== undefined) body['price'] = price;
         return this.fetchApi<ServiceRequest>(`/requests/${id}/status`, {
             method: 'PATCH',
-            body: JSON.stringify({ status: status.toUpperCase() }),
+            body: JSON.stringify(body),
         });
+    }
+
+    async respondToRequest(id: string): Promise<void> {
+        await this.fetchApi<void>(`/requests/${id}/respond`, { method: 'POST' });
+    }
+
+    async getMyResponses() {
+        return this.fetchApi<{ requestId: string; status: import('./types').ResponseStatus }[]>('/my-responses');
+    }
+
+    async acceptResponse(responseId: string): Promise<void> {
+        await this.fetchApi<void>(`/responses/${responseId}/accept`, { method: 'POST' });
+    }
+
+    async declineResponse(responseId: string): Promise<void> {
+        await this.fetchApi<void>(`/responses/${responseId}/decline`, { method: 'POST' });
+    }
+
+    async getNotifications() {
+        return this.fetchApi<{ id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; responseId: string | null; createdAt: string }[]>('/notifications');
     }
 
     // ── Users ────────────────────────────────────────────────────────────────

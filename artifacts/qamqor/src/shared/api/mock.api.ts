@@ -193,4 +193,10 @@ export class MockKamkorApi implements IKamkorApi {
     }
     async getMessages(_chatId: string): Promise<Message[]> { return []; }
     getWsUrl(): string { return ''; }
+
+    async respondToRequest(_id: string): Promise<void> { await delay(); }
+    async acceptResponse(_responseId: string): Promise<void> { await delay(); }
+    async declineResponse(_responseId: string): Promise<void> { await delay(); }
+    async getMyResponses(): Promise<{ requestId: string; status: import('./types').ResponseStatus }[]> { return []; }
+    async getNotifications(): Promise<{ id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; responseId: string | null; createdAt: string }[]> { return []; }
 }

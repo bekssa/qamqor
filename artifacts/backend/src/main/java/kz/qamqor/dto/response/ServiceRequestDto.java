@@ -12,6 +12,7 @@ public record ServiceRequestDto(
     String authorName,
     String authorAvatarUrl,
     String executorId,
+    String executorName,
     String status,
     String category,
     String location,
@@ -24,6 +25,17 @@ public record ServiceRequestDto(
         String ln = r.getAuthor().getLastName();
         String authorName = ((fn != null ? fn : "") + " " + (ln != null ? ln : "")).trim();
         if (authorName.isEmpty()) authorName = r.getAuthor().getName() != null ? r.getAuthor().getName() : "";
+
+        String executorId = null;
+        String executorName = null;
+        if (r.getExecutor() != null) {
+            executorId = r.getExecutor().getId();
+            String efn = r.getExecutor().getFirstName();
+            String eln = r.getExecutor().getLastName();
+            executorName = ((efn != null ? efn : "") + " " + (eln != null ? eln : "")).trim();
+            if (executorName.isEmpty()) executorName = r.getExecutor().getName() != null ? r.getExecutor().getName() : "";
+        }
+
         return new ServiceRequestDto(
             r.getId(),
             r.getTitle(),
@@ -31,7 +43,8 @@ public record ServiceRequestDto(
             r.getAuthor().getId(),
             authorName,
             r.getAuthor().getAvatarUrl(),
-            r.getExecutor() != null ? r.getExecutor().getId() : null,
+            executorId,
+            executorName,
             r.getStatus().name().toLowerCase(),
             r.getCategory(),
             r.getLocation(),

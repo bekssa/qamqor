@@ -13,6 +13,8 @@ export interface User {
 
 export type RequestStatus = "open" | "in_progress" | "completed" | "cancelled";
 
+export type ResponseStatus = "PENDING" | "ACCEPTED" | "DECLINED";
+
 export interface ServiceRequest {
     id: string;
     title: string;
@@ -21,6 +23,7 @@ export interface ServiceRequest {
     authorName?: string;
     authorAvatarUrl?: string;
     executorId?: string;
+    executorName?: string;
     status: RequestStatus;
     createdAt: string;
     category: string;

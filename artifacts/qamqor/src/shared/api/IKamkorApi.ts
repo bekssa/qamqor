@@ -1,4 +1,4 @@
-import { User, ServiceRequest, Review, Chat, Message } from './types';
+import { User, ServiceRequest, Review, Chat, Message, ResponseStatus } from './types';
 
 export interface IKamkorApi {
     // Requests API
@@ -8,7 +8,12 @@ export interface IKamkorApi {
     getAvailableRequests(): Promise<ServiceRequest[]>;
     getRequestById(id: string): Promise<ServiceRequest | null>;
     createRequest(data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status' | 'authorId' | 'executorId'>): Promise<ServiceRequest>;
-    updateRequestStatus(id: string, status: ServiceRequest['status']): Promise<ServiceRequest>;
+    updateRequestStatus(id: string, status: ServiceRequest['status'], price?: number): Promise<ServiceRequest>;
+    respondToRequest(id: string): Promise<void>;
+    getMyResponses(): Promise<{ requestId: string; status: ResponseStatus }[]>;
+    acceptResponse(responseId: string): Promise<void>;
+    declineResponse(responseId: string): Promise<void>;
+    getNotifications(): Promise<{ id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; responseId: string | null; createdAt: string }[]>;
 
     // Users / Volunteers API
     getVolunteers(): Promise<User[]>;
