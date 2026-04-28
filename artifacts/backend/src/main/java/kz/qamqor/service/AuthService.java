@@ -193,6 +193,19 @@ public class AuthService {
         return new AuthResponse(token, UserDto.from(user, null));
     }
 
+    @Transactional
+    public void updatePassword(User user, String newPassword) {
+        if (user == null) {
+            throw new AppException("Not authenticated", HttpStatus.UNAUTHORIZED);
+        }
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new AppException("Password cannot be empty", HttpStatus.BAD_REQUEST);
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        log.info("[AUTH] password updated successfully for email={}", user.getEmail());
+    }
+
     private String buildFullName(String firstName, String lastName) {
         String fn = firstName != null ? firstName.trim() : "";
         String ln = lastName != null ? lastName.trim() : "";

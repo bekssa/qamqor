@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Client } from "@stomp/stompjs";
 import type { Chat, Message, ResponseStatus } from "@shared/api";
 import L from "leaflet";
@@ -67,7 +67,7 @@ const SERVICE_IMG: Record<string, string> = {
 
 function mapBackendRequest(r: { id: string; title: string; description: string; category: string; location: string; price?: number; scheduledDate?: string; status: string; createdAt: string; executorName?: string }): ServiceRequest {
   const d = new Date(r.createdAt);
-  const dateCreated = `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
+  const dateCreated = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
   const statusMap: Record<string, RequestStatus> = { open: "active", in_progress: "active", completed: "completed", cancelled: "cancelled" };
   const serviceLabels: Record<string, string> = { household: "Бытовые услуги", medical: "Медицинская помощь", escort: "Сопровождение", homework: "Домашние работы", shopping: "Покупки" };
   return {
@@ -87,25 +87,25 @@ function mapBackendRequest(r: { id: string; title: string; description: string; 
 
 function getTodayStr() {
   const d = new Date();
-  return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
 }
 function formatDate(raw: string): string {
-  const d = raw.replace(/\D/g,"").slice(0,8);
-  if (d.length<=2) return d;
-  if (d.length<=4) return `${d.slice(0,2)}.${d.slice(2)}`;
-  return `${d.slice(0,2)}.${d.slice(2,4)}.${d.slice(4)}`;
+  const d = raw.replace(/\D/g, "").slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}.${d.slice(2)}`;
+  return `${d.slice(0, 2)}.${d.slice(2, 4)}.${d.slice(4)}`;
 }
 function isValidDate(v: string) {
   if (!/^\d{2}\.\d{2}\.\d{4}$/.test(v)) return false;
-  const [dd,mm,yyyy] = v.split(".").map(Number);
-  if (mm<1||mm>12||dd<1) return false;
-  const d = new Date(yyyy, mm-1, dd);
-  return d.getFullYear()===yyyy && d.getMonth()===mm-1 && d.getDate()===dd;
+  const [dd, mm, yyyy] = v.split(".").map(Number);
+  if (mm < 1 || mm > 12 || dd < 1) return false;
+  const d = new Date(yyyy, mm - 1, dd);
+  return d.getFullYear() === yyyy && d.getMonth() === mm - 1 && d.getDate() === dd;
 }
 function isFutureDate(v: string) {
-  const [dd,mm,yyyy] = v.split(".").map(Number);
-  const d = new Date(yyyy, mm-1, dd);
-  const today = new Date(); today.setHours(0,0,0,0);
+  const [dd, mm, yyyy] = v.split(".").map(Number);
+  const d = new Date(yyyy, mm - 1, dd);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
   return d > today;
 }
 
@@ -132,34 +132,34 @@ interface ChatMessage {
 }
 
 const CONVERSATIONS: Conversation[] = [
-  { id: 1, name: "Куаныш Дастан",         avatar: "photo",   preview: "Принимаю вашу заявку о покупке лекарств. Вскоре уточню детали и приступлю к выполнению", time: "12:45", unread: true },
-  { id: 2, name: "Айбергенова Асылай",     avatar: "АА",      avatarColor: "#a78bfa", preview: "Отклонился на вашу заявку о помощи по дому.\nЗдравствуйте! Работаю в сфере бытовой помощи уже несколько лет, хорошо знаю все основные задачи по дому. Выполню всё аккуратно, быстро и с уважением к вашему пространству...", time: "11:05", unread: true },
-  { id: 3, name: "Платеж успешно выполнен",avatar: "qamqor",  preview: "Заявка №1024", time: "11:05", isSystem: true },
-  { id: 4, name: "Аймердинов Амир",        avatar: "photo",   preview: "Отклонил вашу заявку.\nЗдравствуйте! Извините за неудобства, по личным причинам не могу принять вашу заявку :(", time: "11:05" },
-  { id: 5, name: "Платеж успешно выполнен",avatar: "qamqor",  preview: "Заявка №1023", time: "11:05", isSystem: true },
-  { id: 6, name: "Бакыт Диас",             avatar: "photo",   preview: "Я уже купил всё необходимое.", time: "вс" },
-  { id: 7, name: "Абдешев Сансызбай",      avatar: "АС",      avatarColor: "#f97316", preview: "Ваш родственник активировал SOS кнопку", time: "сб" },
-  { id: 8, name: "Алимова Асем",           avatar: "АА",      avatarColor: "#ec4899", preview: "Дома очень чисто, спасибо вам огромное.\nЖелаю всего наилучшего!", time: "пт", read: true },
-  { id: 9, name: "Ахмет Адиль",            avatar: "АА",      avatarColor: "#6366f1", preview: "Отклонил вашу заявку.\nЗдравствуйте! Извините за неудобства, по личным причинам не могу принять вашу заявку :(", time: "чт" },
-  { id: 10,name: "Куаныш Дастан",          avatar: "КД",      avatarColor: "#14b8a6", preview: "Хорошо, спасибо вам большое!", time: "чт", read: true },
+  { id: 1, name: "Куаныш Дастан", avatar: "photo", preview: "Принимаю вашу заявку о покупке лекарств. Вскоре уточню детали и приступлю к выполнению", time: "12:45", unread: true },
+  { id: 2, name: "Айбергенова Асылай", avatar: "АА", avatarColor: "#a78bfa", preview: "Отклонился на вашу заявку о помощи по дому.\nЗдравствуйте! Работаю в сфере бытовой помощи уже несколько лет, хорошо знаю все основные задачи по дому. Выполню всё аккуратно, быстро и с уважением к вашему пространству...", time: "11:05", unread: true },
+  { id: 3, name: "Платеж успешно выполнен", avatar: "qamqor", preview: "Заявка №1024", time: "11:05", isSystem: true },
+  { id: 4, name: "Аймердинов Амир", avatar: "photo", preview: "Отклонил вашу заявку.\nЗдравствуйте! Извините за неудобства, по личным причинам не могу принять вашу заявку :(", time: "11:05" },
+  { id: 5, name: "Платеж успешно выполнен", avatar: "qamqor", preview: "Заявка №1023", time: "11:05", isSystem: true },
+  { id: 6, name: "Бакыт Диас", avatar: "photo", preview: "Я уже купил всё необходимое.", time: "вс" },
+  { id: 7, name: "Абдешев Сансызбай", avatar: "АС", avatarColor: "#f97316", preview: "Ваш родственник активировал SOS кнопку", time: "сб" },
+  { id: 8, name: "Алимова Асем", avatar: "АА", avatarColor: "#ec4899", preview: "Дома очень чисто, спасибо вам огромное.\nЖелаю всего наилучшего!", time: "пт", read: true },
+  { id: 9, name: "Ахмет Адиль", avatar: "АА", avatarColor: "#6366f1", preview: "Отклонил вашу заявку.\nЗдравствуйте! Извините за неудобства, по личным причинам не могу принять вашу заявку :(", time: "чт" },
+  { id: 10, name: "Куаныш Дастан", avatar: "КД", avatarColor: "#14b8a6", preview: "Хорошо, спасибо вам большое!", time: "чт", read: true },
 ];
 
 const CHAT_MESSAGES: Record<number, ChatMessage[]> = {
   1: [
-    { id: 1, from: "me",    text: "Добрый день!\nМне нужна помощь по покупке лекарств, можете ли вы помочь?", time: "12:15" },
+    { id: 1, from: "me", text: "Добрый день!\nМне нужна помощь по покупке лекарств, можете ли вы помочь?", time: "12:15" },
     { id: 2, from: "other", text: "Добрый день!", time: "12:14" },
     { id: 3, from: "other", text: "Принимаю вашу заявку о покупке лекарств. Вскоре уточню детали и приступлю к выполнению", time: "12:15" },
   ],
   2: [
-    { id: 1, from: "me",    text: "Здравствуйте! Мне нужна помощь по дому.", time: "11:00" },
+    { id: 1, from: "me", text: "Здравствуйте! Мне нужна помощь по дому.", time: "11:00" },
     { id: 2, from: "other", text: "Здравствуйте! Рада помочь! Работаю в сфере бытовой помощи уже несколько лет.", time: "11:05" },
   ],
   4: [
-    { id: 1, from: "me",    text: "Здравствуйте! Могли бы вы помочь с моей заявкой?", time: "10:50" },
+    { id: 1, from: "me", text: "Здравствуйте! Могли бы вы помочь с моей заявкой?", time: "10:50" },
     { id: 2, from: "other", text: "Здравствуйте! Извините за неудобства, по личным причинам не могу принять вашу заявку :(", time: "11:05" },
   ],
   6: [
-    { id: 1, from: "me",    text: "Добрый день! Вы купили всё из списка?", time: "вс" },
+    { id: 1, from: "me", text: "Добрый день! Вы купили всё из списка?", time: "вс" },
     { id: 2, from: "other", text: "Я уже купил всё необходимое.", time: "вс" },
   ],
   7: [
@@ -196,22 +196,22 @@ function Avatar({ conv, size = 44 }: { conv: Conversation; size?: number }) {
 function LanguageSwitcher() {
   const { locale, setLocale } = useLanguage();
   const [open, setOpen] = useState(false);
-  const locales = ["RU","KZ","EN"] as const;
-  const map: Record<string,"ru"|"kz"|"en"> = {RU:"ru",KZ:"kz",EN:"en"};
+  const locales = ["RU", "KZ", "EN"] as const;
+  const map: Record<string, "ru" | "kz" | "en"> = { RU: "ru", KZ: "kz", EN: "en" };
   return (
     <div className="relative">
-      <button onClick={() => setOpen(v=>!v)}
+      <button onClick={() => setOpen(v => !v)}
         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-        <Globe className="w-3.5 h-3.5 text-gray-400"/>
+        <Globe className="w-3.5 h-3.5 text-gray-400" />
         {locale.toUpperCase()}
-        <ChevronDown className="w-3 h-3 text-gray-400"/>
+        <ChevronDown className="w-3 h-3 text-gray-400" />
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden min-w-[72px]">
-          {locales.map(l=>(
-            <button key={l} onClick={()=>{setLocale(map[l]);setOpen(false);}}
+          {locales.map(l => (
+            <button key={l} onClick={() => { setLocale(map[l]); setOpen(false); }}
               className="block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors"
-              style={locale===map[l]?{color:BLUE,fontWeight:600}:{color:"#374151"}}>{l}</button>
+              style={locale === map[l] ? { color: BLUE, fontWeight: 600 } : { color: "#374151" }}>{l}</button>
           ))}
         </div>
       )}
@@ -225,41 +225,41 @@ function AccessibilityToggle() {
   return (
     <button onClick={toggleHighContrast}
       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors"
-      style={isHighContrast?{borderColor:GREEN,background:"#f0faf2",color:GREEN}:{borderColor:"#e5e7eb",background:"white",color:"#374151"}}>
-      <Eye className="w-3.5 h-3.5"/>
+      style={isHighContrast ? { borderColor: GREEN, background: "#f0faf2", color: GREEN } : { borderColor: "#e5e7eb", background: "white", color: "#374151" }}>
+      <Eye className="w-3.5 h-3.5" />
       {isHighContrast ? t("dashboard.accessibilityOff") : t("dashboard.accessibilityOn")}
     </button>
   );
 }
 
 /* ─────────────── user card ─────────────── */
-function UserCard({ user }: { user: { firstName:string;lastName:string;email:string;phone:string;role:string;birthDate?:string;city?:string;avatarUrl?:string } }) {
+function UserCard({ user }: { user: { firstName: string; lastName: string; email: string; phone: string; role: string; birthDate?: string; city?: string; avatarUrl?: string } }) {
   const { t } = useLanguage();
-  const initials = `${user.firstName?.[0]??""}${user.lastName?.[0]??""}`.toUpperCase();
-  const roleLabel = (user.role==="elderly" || user.role==="seek-help") ? t("dashboard.roleSeekHelp") : t("dashboard.roleOfferHelp");
+  const initials = `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase();
+  const roleLabel = (user.role === "elderly" || user.role === "seek-help") ? t("dashboard.roleSeekHelp") : t("dashboard.roleOfferHelp");
   const rows = [
-    {label:t("dashboard.userRole"),  value:roleLabel},
-    {label:t("dashboard.userEmail"), value:user.email},
-    {label:t("dashboard.userPhone"), value:user.phone},
-    {label:t("dashboard.userDob"),   value:user.birthDate ?? "—"},
-    {label:t("dashboard.userCity"),  value:user.city ?? "—"},
+    { label: t("dashboard.userRole"), value: roleLabel },
+    { label: t("dashboard.userEmail"), value: user.email },
+    { label: t("dashboard.userPhone"), value: user.phone },
+    { label: t("dashboard.userDob"), value: user.birthDate ?? "—" },
+    { label: t("dashboard.userCity"), value: user.city ?? "—" },
   ];
   return (
     <div className="px-3 pt-4 pb-2">
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex items-center gap-2.5 px-3 py-3">
           {user.avatarUrl
-            ? <img src={user.avatarUrl} className="w-11 h-11 rounded-full object-cover shrink-0" alt="avatar"/>
+            ? <img src={user.avatarUrl} className="w-11 h-11 rounded-full object-cover shrink-0" alt="avatar" />
             : <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
-                style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
-                {initials}
-              </div>
+              style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+              {initials}
+            </div>
           }
           <p className="font-bold text-gray-900 text-sm leading-tight truncate">{user.lastName} {user.firstName}</p>
         </div>
-        <div className="border-t border-gray-100 mx-3"/>
+        <div className="border-t border-gray-100 mx-3" />
         <div className="px-3 py-2.5 space-y-1.5">
-          {rows.map(({label,value})=>(
+          {rows.map(({ label, value }) => (
             <div key={label} className="flex items-start justify-between gap-2">
               <span className="text-[10px] text-gray-400 shrink-0 leading-tight">{label}</span>
               <span className="text-[10px] text-gray-800 font-medium text-right break-all leading-tight">{value}</span>
@@ -274,41 +274,41 @@ function UserCard({ user }: { user: { firstName:string;lastName:string;email:str
 /* ─────────────── sidebar ─────────────── */
 function Sidebar({ activeNav, setActiveNav, user }: {
   activeNav: NavKey;
-  setActiveNav: (k:NavKey) => void;
-  user: { firstName:string;lastName:string;email:string;phone:string;role:string;birthDate?:string;city?:string;avatarUrl?:string };
+  setActiveNav: (k: NavKey) => void;
+  user: { firstName: string; lastName: string; email: string; phone: string; role: string; birthDate?: string; city?: string; avatarUrl?: string };
 }) {
   const { t } = useLanguage();
   const { logout } = useAuth();
   const [, navigate] = useLocation();
 
-  const navItems: {key:NavKey;Icon:React.ElementType;label:string}[] = [
-    {key:"dashboard", Icon:LayoutDashboard, label:t("dashboard.navDashboard")},
-    {key:"messages",  Icon:MessageSquare,   label:t("dashboard.navMessages")},
-    {key:"requests",  Icon:ClipboardList,   label:t("dashboard.navMyRequests")},
-    {key:"statistics",Icon:BarChart2,       label:t("dashboard.navStatistics")},
-    {key:"support",   Icon:Headphones,      label:t("dashboard.navSupport")},
+  const navItems: { key: NavKey; Icon: React.ElementType; label: string }[] = [
+    { key: "dashboard", Icon: LayoutDashboard, label: t("dashboard.navDashboard") },
+    { key: "messages", Icon: MessageSquare, label: t("dashboard.navMessages") },
+    { key: "requests", Icon: ClipboardList, label: t("dashboard.navMyRequests") },
+    { key: "statistics", Icon: BarChart2, label: t("dashboard.navStatistics") },
+    { key: "support", Icon: Headphones, label: t("dashboard.navSupport") },
   ];
 
   return (
     <aside className="w-56 min-h-screen bg-gray-50 flex flex-col shrink-0 border-r border-gray-100">
-      <UserCard user={user}/>
+      <UserCard user={user} />
       <nav className="flex-1 px-3 py-1 flex flex-col gap-1">
-        {navItems.map(({key,Icon,label})=>{
-          const isActive = activeNav===key;
+        {navItems.map(({ key, Icon, label }) => {
+          const isActive = activeNav === key;
           return (
-            <button key={key} onClick={()=>setActiveNav(key)}
+            <button key={key} onClick={() => setActiveNav(key)}
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left border"
-              style={isActive?{background:BLUE,color:"white",borderColor:BLUE}:{background:"white",color:"#374151",borderColor:"#e5e7eb"}}>
-              <Icon className="w-3.5 h-3.5 shrink-0" style={isActive?{color:"white"}:{color:"#9ca3af"}}/>
+              style={isActive ? { background: BLUE, color: "white", borderColor: BLUE } : { background: "white", color: "#374151", borderColor: "#e5e7eb" }}>
+              <Icon className="w-3.5 h-3.5 shrink-0" style={isActive ? { color: "white" } : { color: "#9ca3af" }} />
               <span className="flex-1 leading-tight">{label}</span>
-              <ChevronRight className="w-3 h-3 shrink-0" style={isActive?{color:"rgba(255,255,255,0.65)"}:{color:"#d1d5db"}}/>
+              <ChevronRight className="w-3 h-3 shrink-0" style={isActive ? { color: "rgba(255,255,255,0.65)" } : { color: "#d1d5db" }} />
             </button>
           );
         })}
-        <button onClick={()=>{logout();navigate("/");}}
+        <button onClick={() => { logout(); navigate("/"); }}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all text-left border border-transparent hover:bg-red-50"
-          style={{color:"#EF4444"}}>
-          <LogOut className="w-3.5 h-3.5 shrink-0" style={{color:"#EF4444"}}/>
+          style={{ color: "#EF4444" }}>
+          <LogOut className="w-3.5 h-3.5 shrink-0" style={{ color: "#EF4444" }} />
           <span className="flex-1 leading-tight">{t("dashboard.navLogout")}</span>
         </button>
       </nav>
@@ -317,21 +317,21 @@ function Sidebar({ activeNav, setActiveNav, user }: {
 }
 
 /* ─────────────── service card ─────────────── */
-function ServiceCard({ img,title,desc,selected,onSelect,selectLabel,serviceKey: _ }:{
-  serviceKey:string;img:string;title:string;desc:string;selected:boolean;onSelect:()=>void;selectLabel:string;
+function ServiceCard({ img, title, desc, selected, onSelect, selectLabel, serviceKey: _ }: {
+  serviceKey: string; img: string; title: string; desc: string; selected: boolean; onSelect: () => void; selectLabel: string;
 }) {
   return (
     <div className="flex flex-col items-center p-4 bg-white rounded-2xl cursor-pointer transition-all w-[180px] shrink-0 snap-center"
-      style={selected?{outline:"2.5px solid #2563EB",boxShadow:"0 0 0 4px rgba(37,99,235,0.12)"}:{border:"1.5px solid #f0f0f0",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}
+      style={selected ? { border: "2px solid #2563EB", boxShadow: "0 0 0 4px rgba(37,99,235,0.12)" } : { border: "2px solid #f0f0f0", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}
       onClick={onSelect}>
       <div className="w-full h-28 flex items-center justify-center mb-3">
-        <img src={img} alt={title} className="max-h-full max-w-full object-contain"/>
+        <img src={img} alt={title} className="max-h-full max-w-full object-contain" />
       </div>
       <p className="text-xs font-bold text-gray-800 text-center leading-tight mb-1">{title}</p>
       <p className="text-[10px] text-gray-400 text-center leading-tight flex-1 mb-3">{desc}</p>
-      <button onClick={e=>{e.stopPropagation();onSelect();}}
+      <button onClick={e => { e.stopPropagation(); onSelect(); }}
         className="px-5 py-1.5 rounded-xl text-xs font-semibold text-white transition-opacity hover:opacity-90 mt-auto"
-        style={{background:GREEN}}>
+        style={{ background: GREEN }}>
         {selectLabel}
       </button>
     </div>
@@ -449,13 +449,13 @@ function AddressPickerModal({ onClose, onSelect }: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden" style={{maxHeight:"90vh"}}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden" style={{ maxHeight: "90vh" }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-2">
             {step === "map" && (
               <button onClick={() => { setStep("city"); setCityKey(null); setPickedAddress(""); setSearchQuery(""); setSuggestions([]); }}
                 className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors mr-1">
-                <ArrowLeft className="w-4 h-4"/>
+                <ArrowLeft className="w-4 h-4" />
               </button>
             )}
             <h3 className="font-bold text-gray-900 text-sm">
@@ -472,7 +472,7 @@ function AddressPickerModal({ onClose, onSelect }: {
               {(Object.entries(KZ_CITIES) as [CityKey, typeof KZ_CITIES[CityKey]][]).map(([key, city]) => (
                 <button key={key} onClick={() => { setCityKey(key); setStep("map"); }}
                   className="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 transition-all hover:border-blue-400 hover:bg-blue-50 border-gray-200">
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl" style={{background:"#EFF6FF"}}>
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl" style={{ background: "#EFF6FF" }}>
                     {key === "almaty" ? "🏔️" : "🏛️"}
                   </div>
                   <span className="font-bold text-gray-800 text-sm">{city.name}</span>
@@ -488,9 +488,9 @@ function AddressPickerModal({ onClose, onSelect }: {
               <div className="relative">
                 <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
                   placeholder="Введите адрес для поиска..."
-                  className="w-full px-4 py-2.5 pr-10 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all"/>
+                  className="w-full px-4 py-2.5 pr-10 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all" />
                 <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="11" cy="11" r="8" strokeWidth="2"/><line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2"/>
+                  <circle cx="11" cy="11" r="8" strokeWidth="2" /><line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2" />
                 </svg>
               </div>
               {suggestions.length > 0 && (
@@ -509,8 +509,8 @@ function AddressPickerModal({ onClose, onSelect }: {
               <button onClick={locateMe} disabled={loadingGeo}
                 className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-60">
                 {loadingGeo
-                  ? <><span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin inline-block"/><span>Определяем...</span></>
-                  : <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" strokeWidth="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" strokeWidth="2"/></svg><span>Моё местоположение</span></>
+                  ? <><span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin inline-block" /><span>Определяем...</span></>
+                  : <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" strokeWidth="2" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" strokeWidth="2" /></svg><span>Моё местоположение</span></>
                 }
               </button>
               {pickedAddress && (
@@ -518,14 +518,14 @@ function AddressPickerModal({ onClose, onSelect }: {
               )}
             </div>
 
-            <div ref={mapDivRef} className="flex-1 mx-4 mb-4 rounded-xl overflow-hidden border border-gray-200" style={{minHeight:"260px"}}/>
+            <div ref={mapDivRef} className="flex-1 mx-4 mb-4 rounded-xl overflow-hidden border border-gray-200" style={{ minHeight: "260px" }} />
 
             <div className="px-4 pb-4 shrink-0">
               <button
                 disabled={!pickedAddress}
                 onClick={() => { if (pickedAddress && cityKey) onSelect(pickedAddress, KZ_CITIES[cityKey].name); }}
                 className="w-full py-3 text-white text-sm font-bold rounded-xl transition-opacity disabled:opacity-40"
-                style={{background:GREEN}}>
+                style={{ background: GREEN }}>
                 Выбрать этот адрес
               </button>
             </div>
@@ -537,11 +537,11 @@ function AddressPickerModal({ onClose, onSelect }: {
 }
 
 /* ─────────────── date picker field ─────────────── */
-const MONTH_NAMES_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
-const DOW_LABELS_RU = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+const MONTH_NAMES_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+const DOW_LABELS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 function DatePickerField({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string }) {
-  const todayBase = new Date(); todayBase.setHours(0,0,0,0);
+  const todayBase = new Date(); todayBase.setHours(0, 0, 0, 0);
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(todayBase.getFullYear());
   const [viewMonth, setViewMonth] = useState(todayBase.getMonth());
@@ -549,8 +549,8 @@ function DatePickerField({ value, onChange, error }: { value: string; onChange: 
 
   let selDate: Date | null = null;
   if (isValidDate(value)) {
-    const [dd,mm,yyyy] = value.split(".").map(Number);
-    selDate = new Date(yyyy, mm-1, dd);
+    const [dd, mm, yyyy] = value.split(".").map(Number);
+    selDate = new Date(yyyy, mm - 1, dd);
   }
 
   useEffect(() => {
@@ -563,28 +563,28 @@ function DatePickerField({ value, onChange, error }: { value: string; onChange: 
 
   const prevMonth = () => {
     if (viewYear === todayBase.getFullYear() && viewMonth === todayBase.getMonth()) return;
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y=>y-1); } else setViewMonth(m=>m-1);
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); } else setViewMonth(m => m - 1);
   };
   const nextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y=>y+1); } else setViewMonth(m=>m+1);
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); } else setViewMonth(m => m + 1);
   };
 
   const firstDay = new Date(viewYear, viewMonth, 1);
-  const lastDayNum = new Date(viewYear, viewMonth+1, 0).getDate();
-  let startDow = firstDay.getDay(); startDow = startDow===0 ? 6 : startDow-1;
-  const days: (Date|null)[] = [];
-  for (let i=0; i<startDow; i++) days.push(null);
-  for (let d=1; d<=lastDayNum; d++) days.push(new Date(viewYear, viewMonth, d));
+  const lastDayNum = new Date(viewYear, viewMonth + 1, 0).getDate();
+  let startDow = firstDay.getDay(); startDow = startDow === 0 ? 6 : startDow - 1;
+  const days: (Date | null)[] = [];
+  for (let i = 0; i < startDow; i++) days.push(null);
+  for (let d = 1; d <= lastDayNum; d++) days.push(new Date(viewYear, viewMonth, d));
 
   const handleDayClick = (day: Date) => {
     if (day < todayBase) return;
-    const dd=String(day.getDate()).padStart(2,"0");
-    const mm=String(day.getMonth()+1).padStart(2,"0");
+    const dd = String(day.getDate()).padStart(2, "0");
+    const mm = String(day.getMonth() + 1).padStart(2, "0");
     onChange(`${dd}.${mm}.${day.getFullYear()}`);
     setOpen(false);
   };
 
-  const atMinMonth = viewYear===todayBase.getFullYear() && viewMonth===todayBase.getMonth();
+  const atMinMonth = viewYear === todayBase.getFullYear() && viewMonth === todayBase.getMonth();
 
   return (
     <div className="relative" ref={containerRef}>
@@ -593,14 +593,14 @@ function DatePickerField({ value, onChange, error }: { value: string; onChange: 
           onChange={e => onChange(formatDate(e.target.value))}
           onFocus={() => setOpen(true)}
           placeholder="дд.мм.гггг"
-          className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none transition-all pr-8 ${error?"border-red-400 bg-red-50":"border-gray-200 focus:border-blue-400"}`}/>
-        <button type="button" tabIndex={-1} onClick={()=>setOpen(v=>!v)}
+          className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none transition-all pr-8 ${error ? "border-red-400 bg-red-50" : "border-gray-200 focus:border-blue-400"}`} />
+        <button type="button" tabIndex={-1} onClick={() => setOpen(v => !v)}
           className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2"/>
-            <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2"/>
-            <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2"/>
-            <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2"/>
+            <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2" />
+            <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" />
+            <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" />
+            <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" />
           </svg>
         </button>
       </div>
@@ -614,24 +614,24 @@ function DatePickerField({ value, onChange, error }: { value: string; onChange: 
               className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 text-base transition-colors">›</button>
           </div>
           <div className="grid grid-cols-7 mb-1">
-            {DOW_LABELS_RU.map(d=>(
+            {DOW_LABELS_RU.map(d => (
               <div key={d} className="text-[10px] text-center text-gray-400 font-medium py-1">{d}</div>
             ))}
           </div>
           <div className="grid grid-cols-7 gap-0.5">
-            {days.map((day,i)=>{
-              if (!day) return <div key={`e${i}`}/>;
+            {days.map((day, i) => {
+              if (!day) return <div key={`e${i}`} />;
               const isPast = day < todayBase;
-              const isToday = day.getTime()===todayBase.getTime();
-              const isSel = selDate && day.getTime()===selDate.getTime();
+              const isToday = day.getTime() === todayBase.getTime();
+              const isSel = selDate && day.getTime() === selDate.getTime();
               return (
-                <button key={day.getTime()} type="button" onClick={()=>handleDayClick(day)} disabled={isPast}
+                <button key={day.getTime()} type="button" onClick={() => handleDayClick(day)} disabled={isPast}
                   className={`text-[11px] h-7 w-full rounded-lg flex items-center justify-center transition-colors
-                    ${isPast?"text-gray-300 cursor-not-allowed":"hover:bg-gray-100"}
-                    ${isSel?"font-bold":""}
-                    ${isToday&&!isSel?"font-bold ring-1 ring-gray-300":"text-gray-700"}
+                    ${isPast ? "text-gray-300 cursor-not-allowed" : "hover:bg-gray-100"}
+                    ${isSel ? "font-bold" : ""}
+                    ${isToday && !isSel ? "font-bold ring-1 ring-gray-300" : "text-gray-700"}
                   `}
-                  style={isSel?{background:GREEN,color:"white"}:{}}>
+                  style={isSel ? { background: GREEN, color: "white" } : {}}>
                   {day.getDate()}
                 </button>
               );
@@ -649,9 +649,9 @@ function SuccessModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 flex flex-col items-center text-center gap-4">
-        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{background:"#DCFCE7"}}>
+        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "#DCFCE7" }}>
           <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5">
-            <polyline points="20 6 9 17 4 12"/>
+            <polyline points="20 6 9 17 4 12" />
           </svg>
         </div>
         <div>
@@ -660,7 +660,7 @@ function SuccessModal({ onClose }: { onClose: () => void }) {
         </div>
         <button onClick={onClose}
           className="px-8 py-3 text-white text-sm font-bold rounded-xl transition-opacity hover:opacity-90 w-full"
-          style={{background:GREEN}}>
+          style={{ background: GREEN }}>
           Отлично!
         </button>
       </div>
@@ -669,7 +669,7 @@ function SuccessModal({ onClose }: { onClose: () => void }) {
 }
 
 /* ─────────────── create-request tab ─────────────── */
-function CreateRequestTab({ userId: _userId }: { userId:string }) {
+function CreateRequestTab({ userId: _userId }: { userId: string }) {
   const { t } = useLanguage();
   const [selectedService, setSelectedService] = useState("");
   const [description, setDescription] = useState("");
@@ -678,7 +678,7 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [showAddressPicker, setShowAddressPicker] = useState(false);
-  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingReq, setEditingReq] = useState<ServiceRequest | null>(null);
@@ -687,28 +687,28 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
   useEffect(() => {
     api.getMyRequests().then(list => {
       setRequests(list.map(mapBackendRequest));
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch(() => { }).finally(() => setLoading(false));
   }, []);
 
   const services = [
-    {key:"household",img:imgHousehold,title:t("dashboard.serviceHousehold"),desc:t("dashboard.serviceHouseholdDesc")},
-    {key:"medical",  img:imgMedical,  title:t("dashboard.serviceMedical"),  desc:t("dashboard.serviceMedicalDesc")},
-    {key:"escort",   img:imgEscort,   title:t("dashboard.serviceEscort"),   desc:t("dashboard.serviceEscortDesc")},
-    {key:"homework", img:imgHomeWork, title:t("dashboard.serviceHomeWork"), desc:t("dashboard.serviceHomeWorkDesc")},
-    {key:"shopping", img:imgShopping, title:t("dashboard.serviceShopping"), desc:t("dashboard.serviceShoppingDesc")},
+    { key: "household", img: imgHousehold, title: t("dashboard.serviceHousehold"), desc: t("dashboard.serviceHouseholdDesc") },
+    { key: "medical", img: imgMedical, title: t("dashboard.serviceMedical"), desc: t("dashboard.serviceMedicalDesc") },
+    { key: "escort", img: imgEscort, title: t("dashboard.serviceEscort"), desc: t("dashboard.serviceEscortDesc") },
+    { key: "homework", img: imgHomeWork, title: t("dashboard.serviceHomeWork"), desc: t("dashboard.serviceHomeWorkDesc") },
+    { key: "shopping", img: imgShopping, title: t("dashboard.serviceShopping"), desc: t("dashboard.serviceShoppingDesc") },
   ];
 
-  const sel = services.find(s=>s.key===selectedService);
+  const sel = services.find(s => s.key === selectedService);
 
   const validate = () => {
-    const e: Record<string,string> = {};
-    if (!selectedService) e.service=t("dashboard.selectService");
-    if (!description.trim()) e.description=t("dashboard.required");
-    if (!price) e.price=t("dashboard.required");
-    if (!date) e.date=t("dashboard.required");
-    else if (!isValidDate(date)) e.date=t("dashboard.dateInvalid");
-    else if (!isFutureDate(date)) e.date=t("dashboard.datePast");
-    if (!address.trim()) e.address=t("dashboard.required");
+    const e: Record<string, string> = {};
+    if (!selectedService) e.service = t("dashboard.selectService");
+    if (!description.trim()) e.description = t("dashboard.required");
+    if (!price) e.price = t("dashboard.required");
+    if (!date) e.date = t("dashboard.required");
+    else if (!isValidDate(date)) e.date = t("dashboard.dateInvalid");
+    else if (!isFutureDate(date)) e.date = t("dashboard.datePast");
+    if (!address.trim()) e.address = t("dashboard.required");
     return e;
   };
 
@@ -737,9 +737,9 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
       <h2 className="text-base font-bold text-gray-800">{t("dashboard.createTitle")}</h2>
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex gap-3 overflow-x-auto pb-2 snap-x" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
-          {services.map(s=>(
+          {services.map(s => (
             <ServiceCard key={s.key} serviceKey={s.key} img={s.img} title={s.title} desc={s.desc}
-              selected={selectedService===s.key} onSelect={()=>setSelectedService(s.key)} selectLabel={t("dashboard.selectBtn")}/>
+              selected={selectedService === s.key} onSelect={() => setSelectedService(s.key)} selectLabel={t("dashboard.selectBtn")} />
           ))}
         </div>
         {errors.service && <p className="text-[10px] text-red-500 mt-2">{errors.service}</p>}
@@ -748,25 +748,25 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-700">{t("dashboard.descLabel")}</label>
-          <textarea value={description} onChange={e=>{setDescription(e.target.value);if(errors.description)setErrors(er=>({...er,description:""}));}}
+          <textarea value={description} onChange={e => { setDescription(e.target.value); if (errors.description) setErrors(er => ({ ...er, description: "" })); }}
             placeholder={t("dashboard.descPlaceholder")} rows={3}
-            className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none resize-none transition-all ${errors.description?"border-red-400 bg-red-50":"border-gray-200 focus:border-blue-400"}`}/>
+            className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none resize-none transition-all ${errors.description ? "border-red-400 bg-red-50" : "border-gray-200 focus:border-blue-400"}`} />
           {errors.description && <p className="text-[10px] text-red-500">{errors.description}</p>}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-700">{t("dashboard.priceLabel")}</label>
             <input type="text" inputMode="numeric" value={price}
-              onChange={e=>{setPrice(e.target.value.replace(/\D/g,""));if(errors.price)setErrors(er=>({...er,price:""}));}}
+              onChange={e => { setPrice(e.target.value.replace(/\D/g, "")); if (errors.price) setErrors(er => ({ ...er, price: "" })); }}
               placeholder={t("dashboard.pricePlaceholder")}
-              className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none transition-all ${errors.price?"border-red-400 bg-red-50":"border-gray-200 focus:border-blue-400"}`}/>
+              className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none transition-all ${errors.price ? "border-red-400 bg-red-50" : "border-gray-200 focus:border-blue-400"}`} />
             {errors.price && <p className="text-[10px] text-red-500">{errors.price}</p>}
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-700">{t("dashboard.dateLabel")}</label>
             <DatePickerField
               value={date}
-              onChange={v=>{ setDate(v); if(errors.date) setErrors(er=>({...er,date:""})); }}
+              onChange={v => { setDate(v); if (errors.date) setErrors(er => ({ ...er, date: "" })); }}
               error={errors.date}
             />
             {errors.date && <p className="text-[10px] text-red-500">{errors.date}</p>}
@@ -774,9 +774,9 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-700">{t("dashboard.addressLabel")}</label>
-          <button type="button" onClick={() => { setShowAddressPicker(true); if(errors.address) setErrors(er=>({...er,address:""})); }}
+          <button type="button" onClick={() => { setShowAddressPicker(true); if (errors.address) setErrors(er => ({ ...er, address: "" })); }}
             className={`w-full px-3 py-2.5 rounded-xl border text-xs text-left transition-all flex items-center gap-2 ${errors.address ? "border-red-400 bg-red-50" : address ? "border-gray-200 bg-gray-50" : "border-gray-200 hover:border-blue-400"}`}>
-            <svg className="w-3.5 h-3.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <svg className="w-3.5 h-3.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             {address
               ? <span className="truncate text-gray-800">{address.split(",").slice(0, 3).join(", ")}{city ? <span className="text-gray-400 ml-1">({city})</span> : null}</span>
               : <span className="text-gray-400">{t("dashboard.addressPlaceholder")}</span>
@@ -792,7 +792,7 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
         )}
         <button onClick={handleCreate}
           className="px-5 py-2.5 text-white text-xs font-bold rounded-xl transition-opacity hover:opacity-90 shadow-sm"
-          style={{background:GREEN}}>
+          style={{ background: GREEN }}>
           {t("dashboard.createBtn")}
         </button>
       </div>
@@ -800,8 +800,8 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
           <h3 className="font-bold text-gray-800 text-sm">{t("dashboard.activeRequests")}</h3>
-          <button className="text-xs font-medium flex items-center gap-0.5" style={{color:BLUE}}>
-            {t("dashboard.showAll")} <ChevronRight className="w-3 h-3"/>
+          <button className="text-xs font-medium flex items-center gap-0.5" style={{ color: BLUE }}>
+            {t("dashboard.showAll")} <ChevronRight className="w-3 h-3" />
           </button>
         </div>
         <div className="overflow-x-auto px-4 pt-3 pb-1">
@@ -824,16 +824,16 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
                     >{h}</th>
                   );
                 })}
-                <th style={{ background:"white", borderTop:"1px solid #BFDBFE", borderBottom:"1px solid #BFDBFE", borderRight:"1px solid #BFDBFE", borderLeft:"none", borderRadius:"0 10px 10px 0", width:"100px" }}/>
+                <th style={{ background: "white", borderTop: "1px solid #BFDBFE", borderBottom: "1px solid #BFDBFE", borderRight: "1px solid #BFDBFE", borderLeft: "none", borderRadius: "0 10px 10px 0", width: "100px" }} />
               </tr>
             </thead>
             <tbody>
-              {requests.filter(r=>(r.status??"active")==="active").map(req=>(
+              {requests.filter(r => (r.status ?? "active") === "active").map(req => (
                 <tr key={req.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-3 py-2.5 border-b border-gray-100">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-lg overflow-hidden bg-gray-50 shrink-0 border border-gray-100">
-                        <img src={SERVICE_IMG[req.serviceKey]??imgHousehold} alt={req.serviceLabel} className="w-full h-full object-contain p-1"/>
+                        <img src={SERVICE_IMG[req.serviceKey] ?? imgHousehold} alt={req.serviceLabel} className="w-full h-full object-contain p-1" />
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold text-gray-800 leading-tight">{req.serviceLabel}</p>
@@ -852,13 +852,13 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
                     <button
                       onClick={() => setEditingReq(req)}
                       className="px-3 py-1.5 text-white text-xs font-semibold rounded-lg transition-opacity hover:opacity-90 whitespace-nowrap"
-                      style={{background:BLUE}}>
+                      style={{ background: BLUE }}>
                       {t("dashboard.editBtn")}
                     </button>
                   </td>
                 </tr>
               ))}
-              {requests.filter(r=>(r.status??"active")==="active").length===0 && (
+              {requests.filter(r => (r.status ?? "active") === "active").length === 0 && (
                 <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">—</td></tr>
               )}
             </tbody>
@@ -876,7 +876,7 @@ function CreateRequestTab({ userId: _userId }: { userId:string }) {
           }}
         />
       )}
-      {showSuccess && <SuccessModal onClose={() => setShowSuccess(false)}/>}
+      {showSuccess && <SuccessModal onClose={() => setShowSuccess(false)} />}
     </div>
   );
 }
@@ -886,7 +886,7 @@ function EditRequestModal({
   req, services, onClose, onSave,
 }: {
   req: ServiceRequest;
-  services: {key:string;img:string;title:string}[];
+  services: { key: string; img: string; title: string }[];
   onClose: () => void;
   onSave: (updated: ServiceRequest) => void;
 }) {
@@ -898,7 +898,7 @@ function EditRequestModal({
   const [address, setAddress] = useState(req.address);
   const [open, setOpen] = useState(false);
 
-  const selectedSvc = services.find(s=>s.key===serviceKey);
+  const selectedSvc = services.find(s => s.key === serviceKey);
 
   const handleSave = () => {
     onSave({ ...req, serviceKey, serviceLabel: selectedSvc?.title ?? req.serviceLabel, description, price, dateExecution: date, address });
@@ -915,13 +915,13 @@ function EditRequestModal({
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setOpen(v=>!v)}
+                onClick={() => setOpen(v => !v)}
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm text-left flex items-center justify-between outline-none focus:border-blue-400"
               >
                 <span className={selectedSvc ? "text-gray-800" : "text-gray-400"}>
                   {selectedSvc?.title ?? t("dashboard.selectService")}
                 </span>
-                <ChevronDown className="w-4 h-4 text-gray-400"/>
+                <ChevronDown className="w-4 h-4 text-gray-400" />
               </button>
               {open && (
                 <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
@@ -929,7 +929,7 @@ function EditRequestModal({
                     <button key={s.key} type="button"
                       onClick={() => { setServiceKey(s.key); setOpen(false); }}
                       className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors"
-                      style={serviceKey===s.key ? {color:BLUE,fontWeight:600} : {color:"#374151"}}>
+                      style={serviceKey === s.key ? { color: BLUE, fontWeight: 600 } : { color: "#374151" }}>
                       {s.title}
                     </button>
                   ))}
@@ -940,8 +940,8 @@ function EditRequestModal({
 
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-700">{t("dashboard.descLabel")}</label>
-            <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none resize-none focus:border-blue-400"/>
+            <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none resize-none focus:border-blue-400" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -949,8 +949,8 @@ function EditRequestModal({
               <label className="text-sm font-medium text-gray-700">{t("dashboard.priceLabel")}</label>
               <div className="relative">
                 <input type="text" inputMode="numeric" value={price}
-                  onChange={e=>setPrice(e.target.value.replace(/\D/g,""))}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-400 pr-8"/>
+                  onChange={e => setPrice(e.target.value.replace(/\D/g, ""))}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-400 pr-8" />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₸</span>
               </div>
             </div>
@@ -958,10 +958,10 @@ function EditRequestModal({
               <label className="text-sm font-medium text-gray-700">{t("dashboard.dateLabel")}</label>
               <div className="relative">
                 <input type="text" value={date} placeholder="дд.мм.гггг" maxLength={10}
-                  onChange={e=>{ const d=e.target.value.replace(/\D/g,"").slice(0,8); let f=d; if(d.length>2)f=`${d.slice(0,2)}.${d.slice(2)}`; if(d.length>4)f=`${d.slice(0,2)}.${d.slice(2,4)}.${d.slice(4)}`; setDate(f); }}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-400 pr-8"/>
+                  onChange={e => { const d = e.target.value.replace(/\D/g, "").slice(0, 8); let f = d; if (d.length > 2) f = `${d.slice(0, 2)}.${d.slice(2)}`; if (d.length > 4) f = `${d.slice(0, 2)}.${d.slice(2, 4)}.${d.slice(4)}`; setDate(f); }}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-400 pr-8" />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2"/><line x1="16" y1="2" x2="16" y2="6" strokeWidth="2"/><line x1="8" y1="2" x2="8" y2="6" strokeWidth="2"/><line x1="3" y1="10" x2="21" y2="10" strokeWidth="2"/></svg>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2" /><line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" /><line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" /><line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" /></svg>
                 </span>
               </div>
             </div>
@@ -969,14 +969,14 @@ function EditRequestModal({
 
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-700">{t("dashboard.addressLabel")}</label>
-            <input type="text" value={address} onChange={e=>setAddress(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-400"/>
+            <input type="text" value={address} onChange={e => setAddress(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-400" />
           </div>
 
           <div className="flex justify-end">
             <button onClick={handleSave}
               className="px-8 py-3 text-white text-sm font-semibold rounded-xl transition-opacity hover:opacity-90"
-              style={{background:GREEN}}>
+              style={{ background: GREEN }}>
               {t("dashboard.saveBtn")}
             </button>
           </div>
@@ -989,7 +989,7 @@ function EditRequestModal({
 /* ─────────────── completion modal ─────────────── */
 function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (priceOverride?: number) => void }) {
   const { t } = useLanguage();
-  const [agreedPrice, setAgreedPrice] = useState<"yes"|"no">("yes");
+  const [agreedPrice, setAgreedPrice] = useState<"yes" | "no">("yes");
   const [finalPrice, setFinalPrice] = useState("");
 
   return (
@@ -1002,23 +1002,23 @@ function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
 
         <div className="flex flex-col items-start gap-3 mb-6 px-4">
           <label className="flex items-center gap-3 cursor-pointer">
-            <input type="radio" name="price-agreement" checked={agreedPrice==="yes"} onChange={()=>setAgreedPrice("yes")}
-              className="w-4 h-4 accent-green-600"/>
+            <input type="radio" name="price-agreement" checked={agreedPrice === "yes"} onChange={() => setAgreedPrice("yes")}
+              className="w-4 h-4 accent-green-600" />
             <span className="text-sm text-gray-700">{t("dashboard.completionYes")}</span>
           </label>
           <label className="flex items-center gap-3 cursor-pointer">
-            <input type="radio" name="price-agreement" checked={agreedPrice==="no"} onChange={()=>setAgreedPrice("no")}
-              className="w-4 h-4 accent-green-600"/>
+            <input type="radio" name="price-agreement" checked={agreedPrice === "no"} onChange={() => setAgreedPrice("no")}
+              className="w-4 h-4 accent-green-600" />
             <span className="text-sm text-gray-700">{t("dashboard.completionNo")}</span>
           </label>
         </div>
 
-        {agreedPrice==="no" && (
+        {agreedPrice === "no" && (
           <div className="relative mb-6 mx-4">
             <input type="text" inputMode="numeric" value={finalPrice}
-              onChange={e=>setFinalPrice(e.target.value.replace(/\D/g,""))}
+              onChange={e => setFinalPrice(e.target.value.replace(/\D/g, ""))}
               placeholder={t("dashboard.completionPricePlaceholder")}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-green-400 text-center pr-8"/>
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-green-400 text-center pr-8" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₸</span>
           </div>
         )}
@@ -1029,7 +1029,7 @@ function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
             onSubmit(override);
           }}
           className="px-10 py-3 text-white text-sm font-bold rounded-xl uppercase tracking-wide transition-opacity hover:opacity-90"
-          style={{background:GREEN}}>
+          style={{ background: GREEN }}>
           {t("dashboard.completionSubmit")}
         </button>
       </div>
@@ -1049,6 +1049,7 @@ interface HelperRequest {
   dateCreated: string;
   dateExecution: string;
   address: string;
+  createdAtRaw: string;
 }
 
 const HELPER_SERVICE_LABELS: Record<string, string> = {
@@ -1058,7 +1059,7 @@ const HELPER_SERVICE_LABELS: Record<string, string> = {
 
 function mapHelperRequest(r: any): HelperRequest {
   const d = new Date(r.createdAt);
-  const dateCreated = `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
+  const dateCreated = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
   return {
     id: String(r.id),
     name: r.authorName || "Пользователь",
@@ -1070,6 +1071,7 @@ function mapHelperRequest(r: any): HelperRequest {
     dateCreated,
     dateExecution: r.scheduledDate ?? "",
     address: r.location ?? "",
+    createdAtRaw: r.createdAt ?? "",
   };
 }
 
@@ -1105,7 +1107,7 @@ function HelperReqTable({ reqs, onComplete }: {
               );
             })}
             {hasActions && (
-              <th style={{ background:"white", borderTop:"1px solid #BFDBFE", borderBottom:"1px solid #BFDBFE", borderRight:"1px solid #BFDBFE", borderLeft:"none", borderRadius:"0 10px 10px 0", width:"110px" }}/>
+              <th style={{ background: "white", borderTop: "1px solid #BFDBFE", borderBottom: "1px solid #BFDBFE", borderRight: "1px solid #BFDBFE", borderLeft: "none", borderRadius: "0 10px 10px 0", width: "110px" }} />
             )}
           </tr>
         </thead>
@@ -1115,11 +1117,11 @@ function HelperReqTable({ reqs, onComplete }: {
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-start gap-2.5">
                   {req.avatarUrl
-                    ? <img src={req.avatarUrl} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0"/>
+                    ? <img src={req.avatarUrl} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
                     : <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-                        style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
-                        {req.name.substring(0, 1).toUpperCase()}
-                      </div>
+                      style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+                      {req.name.substring(0, 1).toUpperCase()}
+                    </div>
                   }
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800 text-xs leading-tight">{req.name}</p>
@@ -1137,7 +1139,7 @@ function HelperReqTable({ reqs, onComplete }: {
                   <button
                     onClick={() => onComplete(req.id)}
                     className="px-3 py-1.5 text-white text-xs font-bold rounded-lg transition-opacity hover:opacity-90 whitespace-nowrap"
-                    style={{background:"#EF4444"}}>
+                    style={{ background: "#EF4444" }}>
                     {t("dashboard.completeBtn")}
                   </button>
                 </td>
@@ -1155,25 +1157,25 @@ function RequestDetailsModal({ req, onClose, onChat, onRequestRespond, responseS
 }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transition-all transform scale-100 opacity-100" onClick={e=>e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transition-all transform scale-100 opacity-100" onClick={e => e.stopPropagation()}>
         <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h3 className="font-bold text-gray-900 text-lg">Полная информация о заявке</h3>
         </div>
         <div className="px-6 py-5 space-y-6">
           <div className="flex items-center gap-4">
             {req.avatarUrl
-              ? <img src={req.avatarUrl} alt={req.name} className="w-14 h-14 rounded-full object-cover shrink-0"/>
+              ? <img src={req.avatarUrl} alt={req.name} className="w-14 h-14 rounded-full object-cover shrink-0" />
               : <div className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0"
-                  style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
-                  {req.name.substring(0, 1).toUpperCase()}
-                </div>
+                style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+                {req.name.substring(0, 1).toUpperCase()}
+              </div>
             }
             <div>
               <p className="font-bold text-gray-800 text-base">{req.name}</p>
               <p className="text-sm text-gray-500">Заказчик</p>
             </div>
           </div>
-          
+
           <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
             <div>
               <p className="text-xs text-gray-400 font-medium mb-1">Категория</p>
@@ -1195,7 +1197,7 @@ function RequestDetailsModal({ req, onClose, onChat, onRequestRespond, responseS
             </div>
             <div>
               <p className="text-xs text-gray-400 font-medium mb-1">Вознаграждение</p>
-              <p className="text-base font-bold" style={{color: "#2C9C42"}}>{req.price}</p>
+              <p className="text-base font-bold" style={{ color: "#2C9C42" }}>{req.price}</p>
             </div>
             <div>
               <p className="text-xs text-gray-400 font-medium mb-1">Адрес</p>
@@ -1206,8 +1208,8 @@ function RequestDetailsModal({ req, onClose, onChat, onRequestRespond, responseS
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-3">
           <button onClick={() => { onClose(); onChat(); }}
             className="px-5 py-2.5 rounded-xl font-bold text-sm transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
-            style={{background:"#FEF9C3", color:"#EAB308", border:"1px solid #FDE047"}}>
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            style={{ background: "#FEF9C3", color: "#EAB308", border: "1px solid #FDE047" }}>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
             Написать
           </button>
           {responseStatus === "PENDING" && (
@@ -1333,7 +1335,7 @@ function HelperAvailableTable({ reqs, onChat, onAccept, responseStatuses, loadin
                 {h}
               </th>
             ))}
-            <th style={{ background:"white", borderTop:"1px solid #BFDBFE", borderBottom:"1px solid #BFDBFE", borderRight:"1px solid #BFDBFE", borderLeft:"none", borderRadius:"0 10px 10px 0", width:"110px" }}/>
+            <th style={{ background: "white", borderTop: "1px solid #BFDBFE", borderBottom: "1px solid #BFDBFE", borderRight: "1px solid #BFDBFE", borderLeft: "none", borderRadius: "0 10px 10px 0", width: "110px" }} />
           </tr>
         </thead>
         <tbody>
@@ -1342,11 +1344,11 @@ function HelperAvailableTable({ reqs, onChat, onAccept, responseStatuses, loadin
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-start gap-2.5">
                   {req.avatarUrl
-                    ? <img src={req.avatarUrl} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0"/>
+                    ? <img src={req.avatarUrl} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
                     : <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-                        style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
-                        {req.name.substring(0, 1).toUpperCase()}
-                      </div>
+                      style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+                      {req.name.substring(0, 1).toUpperCase()}
+                    </div>
                   }
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800 text-xs leading-tight">{req.name}</p>
@@ -1363,8 +1365,8 @@ function HelperAvailableTable({ reqs, onChat, onAccept, responseStatuses, loadin
                 <div className="flex items-center gap-1.5 justify-end">
                   <button onClick={(e) => { e.stopPropagation(); onChat(req.authorId); }}
                     className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
-                    style={{background:"#FEF9C3", border:"1px solid #FDE047"}} title="Написать">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    style={{ background: "#FEF9C3", border: "1px solid #FDE047" }} title="Написать">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
                   </button>
                   {respondBtn(req.id)}
                 </div>
@@ -1407,17 +1409,40 @@ function HelperDashboard({ user, onOpenChat, cancelledRequestId, declinedRequest
   const [loadingRespondId, setLoadingRespondId] = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [filterType, setFilterType] = useState<"date" | "distance" | "price" | "accepted" | "declined">("date");
+
+  const sortedAndFilteredAvailableReqs = useMemo(() => {
+    let list = [...availableReqs];
+    if (filterType === "accepted") {
+      list = list.filter(r => responseStatuses[r.id] === "ACCEPTED");
+    } else if (filterType === "declined") {
+      list = list.filter(r => responseStatuses[r.id] === "DECLINED");
+    } else {
+      if (filterType === "price") {
+        list.sort((a, b) => {
+          const pa = a.price ? parseInt(a.price, 10) : 0;
+          const pb = b.price ? parseInt(b.price, 10) : 0;
+          return pb - pa;
+        });
+      } else if (filterType === "date") {
+        list.sort((a, b) => new Date(b.createdAtRaw).getTime() - new Date(a.createdAtRaw).getTime());
+      } else if (filterType === "distance") {
+        list.sort((a, b) => a.address.localeCompare(b.address));
+      }
+    }
+    return list;
+  }, [availableReqs, filterType, responseStatuses]);
 
   useEffect(() => {
     api.getAssignedRequests()
       .then(list => setActiveReqs(list.filter((r: any) => r.status === "in_progress").map(mapHelperRequest)))
-      .catch(() => {});
-    api.getAvailableRequests().then(list => setAvailableReqs(list.map(mapHelperRequest))).catch(() => {});
+      .catch(() => { });
+    api.getAvailableRequests().then(list => setAvailableReqs(list.map(mapHelperRequest))).catch(() => { });
     api.getMyResponses().then(list => {
       const map: Record<string, ResponseStatus> = {};
       list.forEach(r => { map[r.requestId] = r.status; });
       setResponseStatuses(map);
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -1442,7 +1467,7 @@ function HelperDashboard({ user, onOpenChat, cancelledRequestId, declinedRequest
     if (activeReqsVersion && activeReqsVersion > 0) {
       api.getAssignedRequests()
         .then(list => setActiveReqs(list.filter((r: any) => r.status === "in_progress").map(mapHelperRequest)))
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [activeReqsVersion]);
 
@@ -1489,12 +1514,12 @@ function HelperDashboard({ user, onOpenChat, cancelledRequestId, declinedRequest
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100">
-          <h3 className="font-bold text-sm" style={{color:GREEN}}>{t("dashboard.activeRequests")}</h3>
+          <h3 className="font-bold text-sm" style={{ color: GREEN }}>{t("dashboard.activeRequests")}</h3>
         </div>
         {activeReqs.length === 0 ? (
           <p className="px-5 py-6 text-xs text-gray-400 text-center">Нет активных заявок</p>
         ) : (
-          <HelperReqTable reqs={activeReqs} onComplete={handleComplete}/>
+          <HelperReqTable reqs={activeReqs} onComplete={handleComplete} />
         )}
       </div>
 
@@ -1502,25 +1527,36 @@ function HelperDashboard({ user, onOpenChat, cancelledRequestId, declinedRequest
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
           <h3 className="font-bold text-sm text-gray-800">{t("dashboard.availableRequests")}</h3>
           <div className="relative">
-            <button onClick={() => setFilterOpen(v=>!v)}
+            <button onClick={() => setFilterOpen(v => !v)}
               className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-800 transition-colors">
-              {t("dashboard.filterByDistance")} <ChevronDown className="w-3.5 h-3.5"/>
+              {filterType === "distance" ? t("dashboard.filterByDistance") :
+                filterType === "price" ? "По цене" :
+                  filterType === "date" ? "По дате" :
+                    filterType === "accepted" ? "Отклик принято" : "Отклик отклонено"} <ChevronDown className="w-3.5 h-3.5" />
             </button>
             {filterOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[140px] overflow-hidden">
-                {["По расстоянию","По дате","По цене"].map(opt=>(
-                  <button key={opt} onClick={()=>setFilterOpen(false)}
-                    className="block w-full text-left px-4 py-2 text-xs hover:bg-gray-50 text-gray-700">{opt}</button>
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[150px] overflow-hidden">
+                {[
+                  { k: "date", label: "По дате" },
+                  { k: "distance", label: "По расстоянию" },
+                  { k: "price", label: "По цене" },
+                  { k: "accepted", label: "Отклик принято" },
+                  { k: "declined", label: "Отклик отклонено" }
+                ].map(opt => (
+                  <button key={opt.k} onClick={() => { setFilterType(opt.k as any); setFilterOpen(false) }}
+                    className={`block w-full text-left px-4 py-2 text-xs hover:bg-gray-50 ${filterType === opt.k ? "font-bold text-blue-600" : "text-gray-700"}`}>
+                    {opt.label}
+                  </button>
                 ))}
               </div>
             )}
           </div>
         </div>
-        <HelperAvailableTable reqs={availableReqs} onChat={handleChat} onAccept={handleAccept} responseStatuses={responseStatuses} loadingRespondId={loadingRespondId}/>
+        <HelperAvailableTable reqs={sortedAndFilteredAvailableReqs} onChat={handleChat} onAccept={handleAccept} responseStatuses={responseStatuses} loadingRespondId={loadingRespondId} />
       </div>
 
       {completingId !== null && (
-        <CompletionModal onClose={() => setCompletingId(null)} onSubmit={(price) => handleSubmitCompletion(price)}/>
+        <CompletionModal onClose={() => setCompletingId(null)} onSubmit={(price) => handleSubmitCompletion(price)} />
       )}
     </div>
   );
@@ -1536,7 +1572,7 @@ function ChatDetail({ chat, myId }: { chat: Chat; myId: string }) {
   const other = chat.participants.find(p => p.id !== myId) ?? chat.participants[0];
 
   useEffect(() => {
-    api.getMessages(chat.id).then(setMessages).catch(() => {});
+    api.getMessages(chat.id).then(setMessages).catch(() => { });
   }, [chat.id]);
 
   useEffect(() => {
@@ -1577,18 +1613,18 @@ function ChatDetail({ chat, myId }: { chat: Chat; myId: string }) {
 
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
-    return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100">
         {other?.avatarUrl
-          ? <img src={other.avatarUrl} alt={other.name} className="w-10 h-10 rounded-full object-cover shrink-0"/>
+          ? <img src={other.avatarUrl} alt={other.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
           : <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-              style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
-              {(other?.name ?? "?").substring(0,1).toUpperCase()}
-            </div>
+            style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+            {(other?.name ?? "?").substring(0, 1).toUpperCase()}
+          </div>
         }
         <p className="font-bold text-gray-900 text-sm">{other?.name ?? "Пользователь"}</p>
       </div>
@@ -1598,35 +1634,34 @@ function ChatDetail({ chat, myId }: { chat: Chat; myId: string }) {
           const isMe = msg.senderId === myId;
           return (
             <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[65%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${
-                isMe ? "text-white rounded-tr-sm" : "text-gray-800 rounded-tl-sm border border-gray-200"
-              }`}
-              style={isMe ? {background:BLUE} : {background:"white"}}>
-                {msg.text.split("\n").map((line,i)=>(
-                  <span key={i}>{line}{i<msg.text.split("\n").length-1 && <br/>}</span>
+              <div className={`max-w-[65%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${isMe ? "text-white rounded-tr-sm" : "text-gray-800 rounded-tl-sm border border-gray-200"
+                }`}
+                style={isMe ? { background: BLUE } : { background: "white" }}>
+                {msg.text.split("\n").map((line, i) => (
+                  <span key={i}>{line}{i < msg.text.split("\n").length - 1 && <br />}</span>
                 ))}
-                <span className={`text-[10px] ml-2 ${isMe?"text-blue-100":"text-gray-400"} inline-flex items-center gap-0.5`}>
+                <span className={`text-[10px] ml-2 ${isMe ? "text-blue-100" : "text-gray-400"} inline-flex items-center gap-0.5`}>
                   {fmtTime(msg.timestamp)}
-                  {isMe && <CheckCheck className="w-3 h-3 text-blue-200"/>}
+                  {isMe && <CheckCheck className="w-3 h-3 text-blue-200" />}
                 </span>
               </div>
             </div>
           );
         })}
-        <div ref={bottomRef}/>
+        <div ref={bottomRef} />
       </div>
 
       <div className="flex items-center gap-3 px-5 py-3 border-t border-gray-100 bg-white">
         <input
           type="text"
           value={input}
-          onChange={e=>setInput(e.target.value)}
-          onKeyDown={e=>e.key==="Enter" && !e.shiftKey && handleSend()}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
           placeholder="написать сообщение..."
           className="flex-1 text-xs text-gray-700 outline-none placeholder:text-gray-400 bg-transparent"
         />
-        <button onClick={handleSend} className="shrink-0 transition-opacity hover:opacity-75" style={{color:BLUE}}>
-          <Send className="w-5 h-5"/>
+        <button onClick={handleSend} className="shrink-0 transition-opacity hover:opacity-75" style={{ color: BLUE }}>
+          <Send className="w-5 h-5" />
         </button>
       </div>
     </div>
@@ -1638,7 +1673,7 @@ function MessagesContent({ onOpenChat, myId }: { onOpenChat: (chat: Chat) => voi
   const [chats, setChats] = useState<Chat[]>([]);
 
   useEffect(() => {
-    api.getChats().then(setChats).catch(() => {});
+    api.getChats().then(setChats).catch(() => { });
   }, []);
 
   return (
@@ -1655,11 +1690,11 @@ function MessagesContent({ onOpenChat, myId }: { onOpenChat: (chat: Chat) => voi
               <button key={chat.id} onClick={() => onOpenChat(chat)}
                 className="w-full flex items-start gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left">
                 {avatarUrl
-                  ? <img src={avatarUrl} alt={name} className="w-11 h-11 rounded-full object-cover shrink-0"/>
+                  ? <img src={avatarUrl} alt={name} className="w-11 h-11 rounded-full object-cover shrink-0" />
                   : <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-                      style={{background:"linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)"}}>
-                      {name.substring(0,1).toUpperCase()}
-                    </div>
+                    style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+                    {name.substring(0, 1).toUpperCase()}
+                  </div>
                 }
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-800 leading-tight">{name}</p>
@@ -1735,7 +1770,7 @@ function RequestsTable({
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-lg overflow-hidden bg-gray-50 shrink-0 border border-gray-100">
-                    <img src={SERVICE_IMG[req.serviceKey] ?? imgHousehold} alt={req.serviceLabel} className="w-full h-full object-contain p-1"/>
+                    <img src={SERVICE_IMG[req.serviceKey] ?? imgHousehold} alt={req.serviceLabel} className="w-full h-full object-contain p-1" />
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800 leading-tight">{req.serviceLabel}</p>
@@ -1774,10 +1809,10 @@ function MyRequestsContent({ userId: _userId }: { userId: string }) {
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
 
   useEffect(() => {
-    api.getMyRequests().then(list => setRequests(list.map(mapBackendRequest))).catch(() => {});
+    api.getMyRequests().then(list => setRequests(list.map(mapBackendRequest))).catch(() => { });
   }, []);
 
-  const active    = requests.filter(r => (r.status ?? "active") === "active");
+  const active = requests.filter(r => (r.status ?? "active") === "active");
   const completed = requests.filter(r => r.status === "completed");
   const cancelled = requests.filter(r => r.status === "cancelled");
 
@@ -1815,9 +1850,9 @@ function MyRequestsContent({ userId: _userId }: { userId: string }) {
 
   return (
     <div className="space-y-4">
-      <Section title="Активные заявки"   color={GREEN}      reqs={active}    showCancel />
-      <Section title="Прошлые заявки"    color="#374151"    reqs={completed}            />
-      <Section title="Отмененные заявки" color="#EF4444"    reqs={cancelled}            />
+      <Section title="Активные заявки" color={GREEN} reqs={active} showCancel />
+      <Section title="Прошлые заявки" color="#374151" reqs={completed} />
+      <Section title="Отмененные заявки" color="#EF4444" reqs={cancelled} />
     </div>
   );
 }
@@ -1828,7 +1863,7 @@ function mapAssignedRequest(r: any): ServiceRequest {
 
 function mapBackendNotification(n: { id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; responseId: string | null; createdAt: string }): NotifItem {
   const d = new Date(n.createdAt);
-  const time = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   const base = { id: n.id, time, timestamp: n.createdAt, service: n.requestTitle };
 
   if (n.type === "NEW_RESPONSE")
@@ -1848,18 +1883,18 @@ function MyVolunteerRequestsContent({ cancelledRequestId }: { cancelledRequestId
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
 
   useEffect(() => {
-    api.getAssignedRequests().then(list => setRequests(list.map(mapAssignedRequest))).catch(() => {});
+    api.getAssignedRequests().then(list => setRequests(list.map(mapAssignedRequest))).catch(() => { });
   }, []);
 
   useEffect(() => {
     if (cancelledRequestId) {
       api.getAssignedRequests()
         .then(list => setRequests(list.map(mapAssignedRequest)))
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [cancelledRequestId]);
 
-  const active    = requests.filter(r => (r.status ?? "active") === "active");
+  const active = requests.filter(r => (r.status ?? "active") === "active");
   const completed = requests.filter(r => r.status === "completed");
   const cancelled = requests.filter(r => r.status === "cancelled");
 
@@ -1868,15 +1903,15 @@ function MyVolunteerRequestsContent({ cancelledRequestId }: { cancelledRequestId
       <div className="px-5 py-3 border-b border-gray-100">
         <h3 className="font-bold text-sm" style={{ color }}>{title}</h3>
       </div>
-      <RequestsTable requests={reqs} emptyText="Нет заявок" helperLabel="Заказчик"/>
+      <RequestsTable requests={reqs} emptyText="Нет заявок" helperLabel="Заказчик" />
     </div>
   );
 
   return (
     <div className="space-y-4">
-      <Section title="Активные заявки"    color={GREEN}      reqs={active}    />
-      <Section title="Прошлые заявки"     color="#374151"    reqs={completed} />
-      <Section title="Отменённые заявки"  color="#EF4444"    reqs={cancelled} />
+      <Section title="Активные заявки" color={GREEN} reqs={active} />
+      <Section title="Прошлые заявки" color="#374151" reqs={completed} />
+      <Section title="Отменённые заявки" color="#EF4444" reqs={cancelled} />
     </div>
   );
 }
@@ -1888,29 +1923,29 @@ interface MockHelper {
 }
 
 const MOCK_HELPERS: MockHelper[] = [
-  { id:1,  name:"Умбеталиев Али",        categoryKey:"household", categoryLabel:"Бытовая помощь",    rating:4.9, city:"astana",  description:"Помогаю пожилым людям с покупками и бытовыми задачами уже 3 года" },
-  { id:2,  name:"Алишева Альмира",       categoryKey:"medical",   categoryLabel:"Медицинская помощь", rating:4.9, city:"astana",  description:"Медсестра с опытом, помогу купить лекарства, сходить к врачу" },
-  { id:3,  name:"Аймердинов Амир",       categoryKey:"homework",  categoryLabel:"Домашние работы",    rating:4.8, city:"almaty",  description:"Опыт работы 4 года, аккуратно выполню задачи по дому" },
-  { id:4,  name:"Куаныш Дастан",         categoryKey:"shopping",  categoryLabel:"Покупки",            rating:4.8, city:"astana",  description:"Помогаю пожилым людям с покупками продуктов и хозтоваров" },
-  { id:5,  name:"Аденова Асем",          categoryKey:"escort",    categoryLabel:"Сопровождение",      rating:4.8, city:"almaty",  description:"Могу сопровождать на прогулки и визиты к врачу" },
-  { id:6,  name:"Береке Мадина",         categoryKey:"household", categoryLabel:"Бытовая помощь",     rating:4.7, city:"almaty",  description:"Ответственная, аккуратная, готовлю домашнюю еду" },
-  { id:7,  name:"Салимова Алиша",        categoryKey:"medical",   categoryLabel:"Медицинская помощь", rating:4.8, city:"astana",  description:"По образованию медсестра, помогу с посещением больницы" },
-  { id:8,  name:"Бакыт Диас",            categoryKey:"household", categoryLabel:"Бытовая помощь",     rating:4.8, city:"almaty",  description:"Помогаю по дому: уборка, приготовление еды, поддержание чистоты" },
-  { id:9,  name:"Алем Асыл",             categoryKey:"escort",    categoryLabel:"Сопровождение",      rating:4.9, city:"almaty",  description:"Сопровождаю в больницу, на прогулки и по делам. Очень внимателен к деталям." },
-  { id:10, name:"Шаймердинов Бегарыс",   categoryKey:"homework",  categoryLabel:"Домашние работы",    rating:4.9, city:"astana",  description:"Опыт работы 3 года, занимаюсь ремонтом и хозяйственными делами" },
-  { id:11, name:"Аймердинов Амир",       categoryKey:"shopping",  categoryLabel:"Покупки",            rating:4.8, city:"almaty",  description:"Помогу с покупкой продуктов и лекарств, всё привезу вовремя." },
-  { id:12, name:"Айбергенова Асылай",    categoryKey:"household", categoryLabel:"Бытовая помощь",     rating:4.8, city:"almaty",  description:"Помогаю пожилым людям с покупками и хозтоваров" },
+  { id: 1, name: "Умбеталиев Али", categoryKey: "household", categoryLabel: "Бытовая помощь", rating: 4.9, city: "astana", description: "Помогаю пожилым людям с покупками и бытовыми задачами уже 3 года" },
+  { id: 2, name: "Алишева Альмира", categoryKey: "medical", categoryLabel: "Медицинская помощь", rating: 4.9, city: "astana", description: "Медсестра с опытом, помогу купить лекарства, сходить к врачу" },
+  { id: 3, name: "Аймердинов Амир", categoryKey: "homework", categoryLabel: "Домашние работы", rating: 4.8, city: "almaty", description: "Опыт работы 4 года, аккуратно выполню задачи по дому" },
+  { id: 4, name: "Куаныш Дастан", categoryKey: "shopping", categoryLabel: "Покупки", rating: 4.8, city: "astana", description: "Помогаю пожилым людям с покупками продуктов и хозтоваров" },
+  { id: 5, name: "Аденова Асем", categoryKey: "escort", categoryLabel: "Сопровождение", rating: 4.8, city: "almaty", description: "Могу сопровождать на прогулки и визиты к врачу" },
+  { id: 6, name: "Береке Мадина", categoryKey: "household", categoryLabel: "Бытовая помощь", rating: 4.7, city: "almaty", description: "Ответственная, аккуратная, готовлю домашнюю еду" },
+  { id: 7, name: "Салимова Алиша", categoryKey: "medical", categoryLabel: "Медицинская помощь", rating: 4.8, city: "astana", description: "По образованию медсестра, помогу с посещением больницы" },
+  { id: 8, name: "Бакыт Диас", categoryKey: "household", categoryLabel: "Бытовая помощь", rating: 4.8, city: "almaty", description: "Помогаю по дому: уборка, приготовление еды, поддержание чистоты" },
+  { id: 9, name: "Алем Асыл", categoryKey: "escort", categoryLabel: "Сопровождение", rating: 4.9, city: "almaty", description: "Сопровождаю в больницу, на прогулки и по делам. Очень внимателен к деталям." },
+  { id: 10, name: "Шаймердинов Бегарыс", categoryKey: "homework", categoryLabel: "Домашние работы", rating: 4.9, city: "astana", description: "Опыт работы 3 года, занимаюсь ремонтом и хозяйственными делами" },
+  { id: 11, name: "Аймердинов Амир", categoryKey: "shopping", categoryLabel: "Покупки", rating: 4.8, city: "almaty", description: "Помогу с покупкой продуктов и лекарств, всё привезу вовремя." },
+  { id: 12, name: "Айбергенова Асылай", categoryKey: "household", categoryLabel: "Бытовая помощь", rating: 4.8, city: "almaty", description: "Помогаю пожилым людям с покупками и хозтоваров" },
 ];
 
-const AVATAR_BG = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#06B6D4","#84CC16"];
+const AVATAR_BG = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16"];
 
 function HelperAvatar({ name, size = 40, colorId }: { name: string; size?: number; colorId: number }) {
   const bg = AVATAR_BG[colorId % AVATAR_BG.length];
   const parts = name.trim().split(/\s+/);
-  const initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0].slice(0,2).toUpperCase();
+  const initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
   return (
-    <div style={{width:size,height:size,borderRadius:"50%",background:bg,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <span style={{color:"white",fontWeight:"bold",fontSize:size*0.35}}>{initials}</span>
+    <div style={{ width: size, height: size, borderRadius: "50%", background: bg, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ color: "white", fontWeight: "bold", fontSize: size * 0.35 }}>{initials}</span>
     </div>
   );
 }
@@ -1919,9 +1954,9 @@ function StarRating({ rating }: { rating: number }) {
   const full = Math.round(rating);
   return (
     <span className="flex items-center gap-0.5">
-      {Array.from({length:5},(_,i)=>(
-        <svg key={i} className="w-3 h-3" viewBox="0 0 24 24" fill={i<full?"#F59E0B":"#E5E7EB"}>
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+      {Array.from({ length: 5 }, (_, i) => (
+        <svg key={i} className="w-3 h-3" viewBox="0 0 24 24" fill={i < full ? "#F59E0B" : "#E5E7EB"}>
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
         </svg>
       ))}
       <span className="text-[10px] text-gray-500 ml-0.5">{rating}</span>
@@ -1936,13 +1971,13 @@ function SelectRequestModal({ requests, onSelect, onClose }: {
 }) {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" style={{maxHeight:"85vh"}}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" style={{ maxHeight: "85vh" }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <h3 className="font-bold text-gray-900 text-sm">Выберите заявку</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors text-xl font-light">✕</button>
         </div>
-        <div className="overflow-y-auto p-4 space-y-3" style={{maxHeight:"calc(85vh - 72px)"}}>
-          {requests.map(req=>(
+        <div className="overflow-y-auto p-4 space-y-3" style={{ maxHeight: "calc(85vh - 72px)" }}>
+          {requests.map(req => (
             <div key={req.id} className="border border-gray-200 rounded-xl p-4">
               <p className="font-semibold text-gray-800 text-xs mb-1">Заявка #{req.id}</p>
               <p className="text-[11px] text-gray-500">Категория: {req.serviceLabel}</p>
@@ -1950,7 +1985,7 @@ function SelectRequestModal({ requests, onSelect, onClose }: {
               <p className="text-[11px] text-gray-500 mb-3">Дата: {req.dateExecution}</p>
               <button onClick={onSelect}
                 className="w-full py-2 text-xs font-bold text-white rounded-lg transition-opacity hover:opacity-90"
-                style={{background:BLUE}}>
+                style={{ background: BLUE }}>
                 Выбрать эту заявку
               </button>
             </div>
@@ -1977,11 +2012,11 @@ function ConfirmHelperModal({ helper, onClose, onConfirm, mode = "select" }: {
             <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl font-light">✕</button>
           </div>
           <div className="px-6 pb-8 flex flex-col items-center text-center">
-            <HelperAvatar name={helper.name} size={64} colorId={helper.id}/>
+            <HelperAvatar name={helper.name} size={64} colorId={helper.id} />
             <p className="font-bold text-gray-900 text-sm mt-3 mb-0.5">{helper.name}</p>
             <p className="text-xs text-gray-400 mb-1">{helper.categoryLabel}</p>
-            <StarRating rating={helper.rating}/>
-            <p className="text-sm font-bold mt-4" style={{color:GREEN}}>Ваша заявка принята</p>
+            <StarRating rating={helper.rating} />
+            <p className="text-sm font-bold mt-4" style={{ color: GREEN }}>Ваша заявка принята</p>
           </div>
         </div>
       </div>
@@ -1997,11 +2032,11 @@ function ConfirmHelperModal({ helper, onClose, onConfirm, mode = "select" }: {
         </div>
         <div className="p-5">
           <div className="flex items-center gap-4 mb-4">
-            <HelperAvatar name={helper.name} size={60} colorId={helper.id}/>
+            <HelperAvatar name={helper.name} size={60} colorId={helper.id} />
             <div>
               <p className="font-bold text-gray-900 text-sm">{helper.name}</p>
               <p className="text-xs text-gray-400 mb-1">{helper.categoryLabel}</p>
-              <StarRating rating={helper.rating}/>
+              <StarRating rating={helper.rating} />
             </div>
           </div>
           {mode === "response" ? (
@@ -2019,7 +2054,7 @@ function ConfirmHelperModal({ helper, onClose, onConfirm, mode = "select" }: {
             </button>
             <button onClick={() => { if (mode === "response") { setAccepted(true); } else { onConfirm(); } }}
               className="flex-1 py-2.5 text-xs font-bold text-white rounded-xl transition-opacity hover:opacity-90"
-              style={{background:BLUE}}>
+              style={{ background: BLUE }}>
               Подтвердить
             </button>
           </div>
@@ -2038,10 +2073,10 @@ function HelperRequestForm({ helper, onBack }: { helper: MockHelper; onBack: () 
   const [city, setCity] = useState("");
   const [showAddressPicker, setShowAddressPicker] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
-    const e: Record<string,string> = {};
+    const e: Record<string, string> = {};
     if (!date) e.date = "Обязательное поле";
     else if (!isValidDate(date)) e.date = "Такой даты не существует";
     else if (!isFutureDate(date)) e.date = "Дата не может быть в прошлом";
@@ -2054,8 +2089,8 @@ function HelperRequestForm({ helper, onBack }: { helper: MockHelper; onBack: () 
   if (submitted) {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center py-16 px-6">
-        <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{background:"#DCFCE7"}}>
-          <svg className="w-8 h-8" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "#DCFCE7" }}>
+          <svg className="w-8 h-8" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
         </div>
         <p className="font-bold text-gray-900 text-base mb-1">Заявка отправлена!</p>
         <p className="text-xs text-gray-500 mb-6 text-center max-w-xs">
@@ -2063,7 +2098,7 @@ function HelperRequestForm({ helper, onBack }: { helper: MockHelper; onBack: () 
         </p>
         <button onClick={onBack}
           className="px-6 py-2.5 text-xs font-bold text-white rounded-xl transition-opacity hover:opacity-90"
-          style={{background:BLUE}}>
+          style={{ background: BLUE }}>
           Вернуться к поиску
         </button>
       </div>
@@ -2072,20 +2107,20 @@ function HelperRequestForm({ helper, onBack }: { helper: MockHelper; onBack: () 
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl px-5 py-3 flex items-center gap-2" style={{background:"#F0FDF4",border:"1px solid #BBF7D0"}}>
-        <svg className="w-4 h-4 shrink-0" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-        <p className="text-xs font-semibold" style={{color:GREEN}}>
+      <div className="rounded-2xl px-5 py-3 flex items-center gap-2" style={{ background: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+        <svg className="w-4 h-4 shrink-0" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+        <p className="text-xs font-semibold" style={{ color: GREEN }}>
           <span className="font-bold">{helper.name}</span> выбран для выполнения заявки
         </p>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <div className="flex items-center gap-4 mb-3">
-          <HelperAvatar name={helper.name} size={56} colorId={helper.id}/>
+          <HelperAvatar name={helper.name} size={56} colorId={helper.id} />
           <div>
             <p className="font-bold text-gray-900 text-sm">{helper.name}</p>
             <p className="text-xs text-gray-400 mb-1">{helper.categoryLabel}</p>
-            <StarRating rating={helper.rating}/>
+            <StarRating rating={helper.rating} />
           </div>
         </div>
         <p className="text-xs text-gray-500">{helper.description}</p>
@@ -2097,26 +2132,26 @@ function HelperRequestForm({ helper, onBack }: { helper: MockHelper; onBack: () 
           <div className="flex flex-col gap-1">
             <DatePickerField
               value={date}
-              onChange={v=>{setDate(v);if(errors.date)setErrors(er=>({...er,date:""}));}}
+              onChange={v => { setDate(v); if (errors.date) setErrors(er => ({ ...er, date: "" })); }}
               error={errors.date}
             />
             {errors.date && <p className="text-[10px] text-red-500">{errors.date}</p>}
           </div>
           <div className="flex flex-col gap-1">
             <input type="text" value={time}
-              onChange={e=>{setTime(e.target.value);if(errors.time)setErrors(er=>({...er,time:""}));}}
+              onChange={e => { setTime(e.target.value); if (errors.time) setErrors(er => ({ ...er, time: "" })); }}
               placeholder="ЧЧ:ММ"
-              className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none transition-all ${errors.time?"border-red-400 bg-red-50":"border-gray-200 focus:border-blue-400"}`}/>
+              className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none transition-all ${errors.time ? "border-red-400 bg-red-50" : "border-gray-200 focus:border-blue-400"}`} />
             {errors.time && <p className="text-[10px] text-red-500">{errors.time}</p>}
           </div>
         </div>
 
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-700">Написать комментарий</label>
-          <textarea value={comment} onChange={e=>setComment(e.target.value)}
+          <textarea value={comment} onChange={e => setComment(e.target.value)}
             placeholder="Опишите детали вашей заявки..."
             rows={3}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs outline-none resize-none focus:border-blue-400 transition-all"/>
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs outline-none resize-none focus:border-blue-400 transition-all" />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -2124,9 +2159,9 @@ function HelperRequestForm({ helper, onBack }: { helper: MockHelper; onBack: () 
             <label className="text-xs font-semibold text-gray-700">Цена</label>
             <div className="relative">
               <input type="text" inputMode="numeric" value={price}
-                onChange={e=>{setPrice(e.target.value.replace(/\D/g,""));if(errors.price)setErrors(er=>({...er,price:""}));}}
+                onChange={e => { setPrice(e.target.value.replace(/\D/g, "")); if (errors.price) setErrors(er => ({ ...er, price: "" })); }}
                 placeholder="0"
-                className={`w-full px-3 py-2.5 pr-6 rounded-xl border text-xs outline-none transition-all ${errors.price?"border-red-400 bg-red-50":"border-gray-200 focus:border-blue-400"}`}/>
+                className={`w-full px-3 py-2.5 pr-6 rounded-xl border text-xs outline-none transition-all ${errors.price ? "border-red-400 bg-red-50" : "border-gray-200 focus:border-blue-400"}`} />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">₸</span>
             </div>
             {errors.price && <p className="text-[10px] text-red-500">{errors.price}</p>}
@@ -2134,11 +2169,11 @@ function HelperRequestForm({ helper, onBack }: { helper: MockHelper; onBack: () 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-700">Ваш адрес</label>
             <button type="button"
-              onClick={()=>{setShowAddressPicker(true);if(errors.address)setErrors(er=>({...er,address:""}));}}
-              className={`w-full px-3 py-2.5 rounded-xl border text-xs text-left flex items-center gap-2 transition-all ${errors.address?"border-red-400 bg-red-50":address?"border-gray-200 bg-gray-50":"border-gray-200 hover:border-blue-400"}`}>
-              <svg className="w-3.5 h-3.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              onClick={() => { setShowAddressPicker(true); if (errors.address) setErrors(er => ({ ...er, address: "" })); }}
+              className={`w-full px-3 py-2.5 rounded-xl border text-xs text-left flex items-center gap-2 transition-all ${errors.address ? "border-red-400 bg-red-50" : address ? "border-gray-200 bg-gray-50" : "border-gray-200 hover:border-blue-400"}`}>
+              <svg className="w-3.5 h-3.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               {address
-                ? <span className="truncate text-gray-800">{address.split(",").slice(0,2).join(",")}{city?<span className="text-gray-400 ml-1">({city})</span>:null}</span>
+                ? <span className="truncate text-gray-800">{address.split(",").slice(0, 2).join(",")}{city ? <span className="text-gray-400 ml-1">({city})</span> : null}</span>
                 : <span className="text-gray-400">Выберите адрес</span>
               }
             </button>
@@ -2148,19 +2183,19 @@ function HelperRequestForm({ helper, onBack }: { helper: MockHelper; onBack: () 
 
         {showAddressPicker && (
           <AddressPickerModal
-            onClose={()=>setShowAddressPicker(false)}
-            onSelect={(addr,c)=>{setAddress(addr);setCity(c);setShowAddressPicker(false);}}
+            onClose={() => setShowAddressPicker(false)}
+            onSelect={(addr, c) => { setAddress(addr); setCity(c); setShowAddressPicker(false); }}
           />
         )}
 
-        <button onClick={()=>{const errs=validate();setErrors(errs);if(!Object.keys(errs).length)setSubmitted(true);}}
+        <button onClick={() => { const errs = validate(); setErrors(errs); if (!Object.keys(errs).length) setSubmitted(true); }}
           className="w-full py-3 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
-          style={{background:BLUE}}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2" fill="currentColor" stroke="none"/></svg>
+          style={{ background: BLUE }}>
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" fill="currentColor" stroke="none" /></svg>
           Отправить заявку
         </button>
         <p className="text-[10px] text-gray-400 text-center flex items-center justify-center gap-1">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2"/><line x1="12" y1="8" x2="12" y2="12" strokeWidth="2"/><line x1="12" y1="16" x2="12.01" y2="16" strokeWidth="3"/></svg>
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><line x1="12" y1="8" x2="12" y2="12" strokeWidth="2" /><line x1="12" y1="16" x2="12.01" y2="16" strokeWidth="3" /></svg>
           Мы уведомим вас, когда ответит помощник.
         </p>
       </div>
@@ -2179,28 +2214,28 @@ function FindHelpersTab({ userId: _userId }: { userId: string }) {
   const [myRequests, setMyRequests] = useState<ServiceRequest[]>([]);
 
   useEffect(() => {
-    api.getMyRequests().then(list => setMyRequests(list.map(mapBackendRequest))).catch(() => {});
+    api.getMyRequests().then(list => setMyRequests(list.map(mapBackendRequest))).catch(() => { });
   }, []);
 
-  const activeWithNoHelper = myRequests.filter(r=>(r.status??"active")==="active"&&!r.helper);
+  const activeWithNoHelper = myRequests.filter(r => (r.status ?? "active") === "active" && !r.helper);
 
-  const filtered = MOCK_HELPERS.filter(h=>{
-    const q=query.toLowerCase();
-    const matchQ=!q||h.name.toLowerCase().includes(q)||h.categoryLabel.toLowerCase().includes(q)||h.description.toLowerCase().includes(q);
-    const matchC=cityFilter==="all"||h.city===cityFilter;
-    return matchQ&&matchC;
+  const filtered = MOCK_HELPERS.filter(h => {
+    const q = query.toLowerCase();
+    const matchQ = !q || h.name.toLowerCase().includes(q) || h.categoryLabel.toLowerCase().includes(q) || h.description.toLowerCase().includes(q);
+    const matchC = cityFilter === "all" || h.city === cityFilter;
+    return matchQ && matchC;
   });
 
-  const handleSelect=(h:MockHelper)=>{
+  const handleSelect = (h: MockHelper) => {
     setSelectedHelper(h);
-    if(activeWithNoHelper.length>0) setShowSelectReq(true);
+    if (activeWithNoHelper.length > 0) setShowSelectReq(true);
     else setShowConfirm(true);
   };
 
-  const cityLabel=cityFilter==="almaty"?"Алматы":cityFilter==="astana"?"Астана":"Все города";
+  const cityLabel = cityFilter === "almaty" ? "Алматы" : cityFilter === "astana" ? "Астана" : "Все города";
 
-  if(view==="form"&&selectedHelper) {
-    return <HelperRequestForm helper={selectedHelper} onBack={()=>{setView("grid");setSelectedHelper(null);}}/>;
+  if (view === "form" && selectedHelper) {
+    return <HelperRequestForm helper={selectedHelper} onBack={() => { setView("grid"); setSelectedHelper(null); }} />;
   }
 
   return (
@@ -2209,28 +2244,28 @@ function FindHelpersTab({ userId: _userId }: { userId: string }) {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3">
           <div className="flex items-center gap-4">
             <div className="relative flex-1">
-              <input type="text" value={query} onChange={e=>setQuery(e.target.value)}
+              <input type="text" value={query} onChange={e => setQuery(e.target.value)}
                 placeholder="Поиск услуг"
-                className="w-full px-4 py-2.5 pr-11 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all"/>
-              <div className="absolute right-0 top-0 bottom-0 w-10 flex items-center justify-center rounded-r-xl" style={{background:BLUE}}>
-                <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                className="w-full px-4 py-2.5 pr-11 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all" />
+              <div className="absolute right-0 top-0 bottom-0 w-10 flex items-center justify-center rounded-r-xl" style={{ background: BLUE }}>
+                <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
               </div>
             </div>
             <div className="relative shrink-0">
               <div className="text-right">
                 <p className="text-[10px] text-gray-400 leading-tight">Мой город:</p>
-                <button onClick={()=>setCityPickerOpen(v=>!v)}
+                <button onClick={() => setCityPickerOpen(v => !v)}
                   className="text-xs font-bold transition-opacity hover:opacity-75"
-                  style={{color:BLUE}}>
+                  style={{ color: BLUE }}>
                   {cityLabel}
                 </button>
               </div>
               {cityPickerOpen && (
                 <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[130px] overflow-hidden">
-                  {([ ["all","Все города"],["almaty","Алматы"],["astana","Астана"] ] as const).map(([key,label])=>(
-                    <button key={key} onClick={()=>{setCityFilter(key);setCityPickerOpen(false);}}
+                  {([["all", "Все города"], ["almaty", "Алматы"], ["astana", "Астана"]] as const).map(([key, label]) => (
+                    <button key={key} onClick={() => { setCityFilter(key); setCityPickerOpen(false); }}
                       className="block w-full text-left px-4 py-2.5 text-xs hover:bg-gray-50 transition-colors"
-                      style={{color:cityFilter===key?BLUE:"#374151",fontWeight:cityFilter===key?"700":"400"}}>
+                      style={{ color: cityFilter === key ? BLUE : "#374151", fontWeight: cityFilter === key ? "700" : "400" }}>
                       {label}
                     </button>
                   ))}
@@ -2240,27 +2275,27 @@ function FindHelpersTab({ userId: _userId }: { userId: string }) {
           </div>
         </div>
 
-        {filtered.length===0 ? (
+        {filtered.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 text-center border border-gray-100 shadow-sm">
             <p className="text-gray-400 text-sm">По вашему запросу ничего не найдено</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {filtered.map(h=>(
+            {filtered.map(h => (
               <div key={h.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col">
                 <div className="flex items-start gap-3 mb-2">
-                  <HelperAvatar name={h.name} size={44} colorId={h.id}/>
+                  <HelperAvatar name={h.name} size={44} colorId={h.id} />
                   <div className="min-w-0">
                     <p className="font-bold text-gray-900 text-xs leading-tight">{h.name}</p>
                     <p className="text-[10px] text-gray-400 leading-tight mb-1">{h.categoryLabel}</p>
-                    <StarRating rating={h.rating}/>
+                    <StarRating rating={h.rating} />
                   </div>
                 </div>
                 <p className="text-[11px] text-gray-500 leading-snug line-clamp-3 flex-1 mb-3">{h.description}</p>
                 <div className="flex justify-end">
-                  <button onClick={()=>handleSelect(h)}
+                  <button onClick={() => handleSelect(h)}
                     className="px-4 py-1.5 text-white text-xs font-bold rounded-lg transition-opacity hover:opacity-90"
-                    style={{background:BLUE}}>
+                    style={{ background: BLUE }}>
                     Выбрать
                   </button>
                 </div>
@@ -2270,18 +2305,18 @@ function FindHelpersTab({ userId: _userId }: { userId: string }) {
         )}
       </div>
 
-      {showSelectReq&&selectedHelper&&(
+      {showSelectReq && selectedHelper && (
         <SelectRequestModal
           requests={activeWithNoHelper}
-          onSelect={()=>{setShowSelectReq(false);setShowConfirm(true);}}
-          onClose={()=>{setShowSelectReq(false);setSelectedHelper(null);}}
+          onSelect={() => { setShowSelectReq(false); setShowConfirm(true); }}
+          onClose={() => { setShowSelectReq(false); setSelectedHelper(null); }}
         />
       )}
-      {showConfirm&&selectedHelper&&(
+      {showConfirm && selectedHelper && (
         <ConfirmHelperModal
           helper={selectedHelper}
-          onClose={()=>{setShowConfirm(false);setSelectedHelper(null);}}
-          onConfirm={()=>{setShowConfirm(false);setView("form");}}
+          onClose={() => { setShowConfirm(false); setSelectedHelper(null); }}
+          onConfirm={() => { setShowConfirm(false); setView("form"); }}
         />
       )}
     </>
@@ -2307,16 +2342,16 @@ interface NotifItem {
 
 const _MOCK_TS = new Date().toISOString();
 const NOTIFS_TODAY: NotifItem[] = [
-  { id:1, type:"accepted",     helperName:"Аймердинов Амир",    service:"Покупка",         time:"12:45", timestamp:_MOCK_TS },
-  { id:2, type:"new_response", helperName:"Айбергенова Асылай", category:"Бытовая помощь", rating:4.8,  time:"11:05", timestamp:_MOCK_TS },
-  { id:3, type:"reminder",     preview:"Сегодня в 16:00 уборка квартиры.",                 time:"",      timestamp:_MOCK_TS },
+  { id: 1, type: "accepted", helperName: "Аймердинов Амир", service: "Покупка", time: "12:45", timestamp: _MOCK_TS },
+  { id: 2, type: "new_response", helperName: "Айбергенова Асылай", category: "Бытовая помощь", rating: 4.8, time: "11:05", timestamp: _MOCK_TS },
+  { id: 3, type: "reminder", preview: "Сегодня в 16:00 уборка квартиры.", time: "", timestamp: _MOCK_TS },
 ];
 const NOTIFS_YESTERDAY: NotifItem[] = [
-  { id:4, type:"rejected",  helperName:"Береке Мадина",  service:"Покупка лекарств", reason:"По личным причинам", time:"18:05", timestamp:_MOCK_TS },
-  { id:5, type:"accepted",  helperName:"Куаныш Дастан",  service:"Бытовая помощь",                                time:"18:05", timestamp:_MOCK_TS },
+  { id: 4, type: "rejected", helperName: "Береке Мадина", service: "Покупка лекарств", reason: "По личным причинам", time: "18:05", timestamp: _MOCK_TS },
+  { id: 5, type: "accepted", helperName: "Куаныш Дастан", service: "Бытовая помощь", time: "18:05", timestamp: _MOCK_TS },
 ];
 const NOTIFS_EARLIER: NotifItem[] = [
-  { id:6, type:"message", helperName:"Бакыт Диас", preview:"Я уже купил всё необходимое", date:"28 марта", time:"10:20", timestamp:_MOCK_TS },
+  { id: 6, type: "message", helperName: "Бакыт Диас", preview: "Я уже купил всё необходимое", date: "28 марта", time: "10:20", timestamp: _MOCK_TS },
 ];
 
 function NotifCard({ n, onView, onAcceptResponse, onDeclineResponse, processingResponseId }: {
@@ -2326,45 +2361,45 @@ function NotifCard({ n, onView, onAcceptResponse, onDeclineResponse, processingR
   onDeclineResponse?: (responseId: string) => void;
   processingResponseId?: string | null;
 }) {
-  const h = n.helperName ? MOCK_HELPERS.find(x=>x.name===n.helperName) : undefined;
+  const h = n.helperName ? MOCK_HELPERS.find(x => x.name === n.helperName) : undefined;
   const colorId = h?.id ?? 0;
 
-  if(n.type==="accepted") return (
+  if (n.type === "accepted") return (
     <div className="flex items-start gap-3">
-      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#DCFCE7"}}>
-        <svg className="w-4 h-4" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#DCFCE7" }}>
+        <svg className="w-4 h-4" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-gray-900">{n.helperName} принял вашу заявку</p>
         <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        {n.time&&<span className="text-[10px] text-gray-400">{n.time}</span>}
+        {n.time && <span className="text-[10px] text-gray-400">{n.time}</span>}
         <button className="px-3 py-1 text-[10px] font-semibold rounded-lg whitespace-nowrap"
-          style={{color:BLUE,border:"1px solid #BFDBFE"}}>
+          style={{ color: BLUE, border: "1px solid #BFDBFE" }}>
           Открыть заявку
         </button>
       </div>
     </div>
   );
 
-  if(n.type==="new_response") return (
+  if (n.type === "new_response") return (
     <div className="flex items-start gap-3">
-      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#FEF9C3"}}>
-        <svg className="w-4 h-4" fill="none" stroke="#EAB308" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FEF9C3" }}>
+        <svg className="w-4 h-4" fill="none" stroke="#EAB308" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-gray-900 mb-1">Новый отклик на заявку</p>
-        {n.service&&<p className="text-[10px] text-gray-400 mb-2">Заявка: {n.service}</p>}
+        {n.service && <p className="text-[10px] text-gray-400 mb-2">Заявка: {n.service}</p>}
         <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 mb-2">
-          {n.helperName&&<HelperAvatar name={n.helperName} size={32} colorId={colorId}/>}
+          {n.helperName && <HelperAvatar name={n.helperName} size={32} colorId={colorId} />}
           <p className="text-[11px] font-semibold text-gray-800 leading-tight">{n.helperName}</p>
         </div>
         {n.responseStatus === "accepted" && (
-          <p className="text-[11px] font-semibold" style={{color:GREEN}}>✓ Вы приняли отклик</p>
+          <p className="text-[11px] font-semibold" style={{ color: GREEN }}>✓ Вы приняли отклик</p>
         )}
         {n.responseStatus === "declined" && (
-          <p className="text-[11px] font-semibold" style={{color:"#EF4444"}}>✗ Вы отклонили отклик</p>
+          <p className="text-[11px] font-semibold" style={{ color: "#EF4444" }}>✗ Вы отклонили отклик</p>
         )}
         {!n.responseStatus && n.responseId && (() => {
           const isProcessing = processingResponseId === n.responseId;
@@ -2374,14 +2409,14 @@ function NotifCard({ n, onView, onAcceptResponse, onDeclineResponse, processingR
                 onClick={() => !isProcessing && onAcceptResponse?.(n.responseId!)}
                 disabled={isProcessing}
                 className="px-3 py-1 text-[11px] font-semibold rounded-lg text-white transition-opacity hover:opacity-90"
-                style={{background: isProcessing ? "#9ca3af" : GREEN, cursor: isProcessing ? "wait" : "pointer"}}>
+                style={{ background: isProcessing ? "#9ca3af" : GREEN, cursor: isProcessing ? "wait" : "pointer" }}>
                 {isProcessing ? "..." : "Принять"}
               </button>
               <button
                 onClick={() => !isProcessing && onDeclineResponse?.(n.responseId!)}
                 disabled={isProcessing}
                 className="px-3 py-1 text-[11px] font-semibold rounded-lg border transition-colors hover:bg-red-50"
-                style={{color: isProcessing ? "#9ca3af" : "#EF4444", borderColor: isProcessing ? "#d1d5db" : "#fecaca", cursor: isProcessing ? "wait" : "pointer"}}>
+                style={{ color: isProcessing ? "#9ca3af" : "#EF4444", borderColor: isProcessing ? "#d1d5db" : "#fecaca", cursor: isProcessing ? "wait" : "pointer" }}>
                 {isProcessing ? "..." : "Отклонить"}
               </button>
             </div>
@@ -2392,38 +2427,38 @@ function NotifCard({ n, onView, onAcceptResponse, onDeclineResponse, processingR
     </div>
   );
 
-  if(n.type==="response_accepted") return (
+  if (n.type === "response_accepted") return (
     <div className="flex items-start gap-3">
-      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#DCFCE7"}}>
-        <svg className="w-4 h-4" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#DCFCE7" }}>
+        <svg className="w-4 h-4" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-gray-900">Ваш отклик принят</p>
-        {n.service&&<p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
-        {n.helperName&&<p className="text-[10px] text-gray-400">Принял(а): {n.helperName}</p>}
+        {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+        {n.helperName && <p className="text-[10px] text-gray-400">Принял(а): {n.helperName}</p>}
       </div>
       <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
     </div>
   );
 
-  if(n.type==="response_declined") return (
+  if (n.type === "response_declined") return (
     <div className="flex items-start gap-3">
-      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#FEE2E2"}}>
-        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FEE2E2" }}>
+        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-gray-900">Ваш отклик отклонён</p>
-        {n.service&&<p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
-        {n.helperName&&<p className="text-[10px] text-gray-400">Отклонил(а): {n.helperName}</p>}
+        {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+        {n.helperName && <p className="text-[10px] text-gray-400">Отклонил(а): {n.helperName}</p>}
       </div>
       <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
     </div>
   );
 
-  if(n.type==="reminder") return (
+  if (n.type === "reminder") return (
     <div className="flex items-start gap-3">
-      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#FEF9C3"}}>
-        <svg className="w-4 h-4" fill="none" stroke="#EAB308" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FEF9C3" }}>
+        <svg className="w-4 h-4" fill="none" stroke="#EAB308" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
       </div>
       <div className="flex-1 min-w-0">
         <span className="text-xs font-semibold text-gray-900">Напоминание: </span>
@@ -2432,42 +2467,42 @@ function NotifCard({ n, onView, onAcceptResponse, onDeclineResponse, processingR
     </div>
   );
 
-  if(n.type==="rejected") return (
+  if (n.type === "rejected") return (
     <div className="flex items-start gap-3">
-      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#FEE2E2"}}>
-        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FEE2E2" }}>
+        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-gray-900">{n.helperName} отклонила вашу заявку</p>
         <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>
-        {n.reason&&<p className="text-[10px] text-gray-400">Причина: {n.reason}</p>}
+        {n.reason && <p className="text-[10px] text-gray-400">Причина: {n.reason}</p>}
       </div>
       <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
     </div>
   );
 
-  if(n.type==="message") return (
+  if (n.type === "message") return (
     <div className="flex items-start gap-3">
-      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#FED7AA"}}>
-        <svg className="w-4 h-4" fill="none" stroke="#F97316" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FED7AA" }}>
+        <svg className="w-4 h-4" fill="none" stroke="#F97316" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-gray-900">Новое сообщение от {n.helperName}</p>
         <p className="text-[10px] text-gray-400 italic">"{n.preview}"</p>
-        {n.date&&<p className="text-[10px] text-gray-300 mt-0.5">{n.date}</p>}
+        {n.date && <p className="text-[10px] text-gray-300 mt-0.5">{n.date}</p>}
       </div>
       <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
     </div>
   );
 
-  if(n.type==="cancelled") return (
+  if (n.type === "cancelled") return (
     <div className="flex items-start gap-3">
-      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:"#FEE2E2"}}>
-        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FEE2E2" }}>
+        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-gray-900">Заявка отменена заказчиком</p>
-        {n.service&&<p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+        {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
       </div>
       <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
     </div>
@@ -2526,20 +2561,20 @@ function NotificationsTab({ realtimeNotifs, onAcceptResponse, onDeclineResponse,
 }
 
 /* ─────────────── account settings tab ─────────────── */
-const CATEGORY_META: Record<string, {label:string; img:string}> = {
-  household: { label:"Бытовая помощь",    img:imgHousehold },
-  medical:   { label:"Медицинская помощь", img:imgMedical },
-  escort:    { label:"Сопровождение",      img:imgEscort },
-  homework:  { label:"Домашние работы",    img:imgHomeWork },
-  shopping:  { label:"Покупки",            img:imgShopping },
+const CATEGORY_META: Record<string, { label: string; img: string }> = {
+  household: { label: "Бытовая помощь", img: imgHousehold },
+  medical: { label: "Медицинская помощь", img: imgMedical },
+  escort: { label: "Сопровождение", img: imgEscort },
+  homework: { label: "Домашние работы", img: imgHomeWork },
+  shopping: { label: "Покупки", img: imgShopping },
 };
 
 const CATEGORIES_LIST = [
-  { key:"household", label:"Бытовая помощь",    desc:"уборка, приготовление еды" },
-  { key:"medical",   label:"Медицинская помощь", desc:"покупка лекарств, сопровождение" },
-  { key:"escort",    label:"Сопровождение",      desc:"поход в больницу, прогулка" },
-  { key:"homework",  label:"Домашние работы",    desc:"починка, мелкий ремонт" },
-  { key:"shopping",  label:"Покупки",            desc:"продукты, хозяйственные товары" },
+  { key: "household", label: "Бытовая помощь", desc: "уборка, приготовление еды" },
+  { key: "medical", label: "Медицинская помощь", desc: "покупка лекарств, сопровождение" },
+  { key: "escort", label: "Сопровождение", desc: "поход в больницу, прогулка" },
+  { key: "homework", label: "Домашние работы", desc: "починка, мелкий ремонт" },
+  { key: "shopping", label: "Покупки", desc: "продукты, хозяйственные товары" },
 ];
 
 const REQUIRED_DOCS = [
@@ -2560,17 +2595,17 @@ function PasswordResetModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="space-y-4 mb-6">
           {[
-            { label:"Старый пароль",            val:oldPw, set:setOldPw, show:showOld, setShow:setShowOld },
-            { label:"Новый пароль",             val:newPw, set:setNewPw, show:showNew, setShow:setShowNew },
-            { label:"Подтвердите новый пароль", val:confirmPw, set:setConfirmPw, show:showConf, setShow:setShowConf },
-          ].map(({label,val,set,show,setShow}) => (
+            { label: "Старый пароль", val: oldPw, set: setOldPw, show: showOld, setShow: setShowOld },
+            { label: "Новый пароль", val: newPw, set: setNewPw, show: showNew, setShow: setShowNew },
+            { label: "Подтвердите новый пароль", val: confirmPw, set: setConfirmPw, show: showConf, setShow: setShowConf },
+          ].map(({ label, val, set, show, setShow }) => (
             <div key={label}>
               <label className="text-xs text-gray-600 mb-1 block">{label}</label>
               <div className="relative">
-                <input type={show?"text":"password"} value={val} onChange={e=>set(e.target.value)}
-                  className="w-full px-3 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-400 pr-10"/>
-                <button type="button" onClick={()=>setShow(v=>!v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  <Eye className="w-4 h-4"/>
+                <input type={show ? "text" : "password"} value={val} onChange={e => set(e.target.value)}
+                  className="w-full px-3 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-400 pr-10" />
+                <button type="button" onClick={() => setShow(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <Eye className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -2578,7 +2613,7 @@ function PasswordResetModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="flex gap-3">
           <button className="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50">забыли пароль?</button>
-          <button onClick={onClose} className="flex-1 py-2.5 text-sm font-bold text-white rounded-xl hover:opacity-90 transition-opacity" style={{background:BLUE}}>подтвердить</button>
+          <button onClick={onClose} className="flex-1 py-2.5 text-sm font-bold text-white rounded-xl hover:opacity-90 transition-opacity" style={{ background: BLUE }}>подтвердить</button>
         </div>
       </div>
     </div>
@@ -2586,7 +2621,7 @@ function PasswordResetModal({ onClose }: { onClose: () => void }) {
 }
 
 function CategoryPickerModal({ selected, onToggle, onClose }: {
-  selected: string[]; onToggle: (key:string)=>void; onClose: ()=>void;
+  selected: string[]; onToggle: (key: string) => void; onClose: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -2594,19 +2629,19 @@ function CategoryPickerModal({ selected, onToggle, onClose }: {
         <button onClick={onClose} className="absolute top-5 right-5 text-gray-400 hover:text-gray-700 text-xl font-light">✕</button>
         <h3 className="text-center font-bold text-gray-800 text-base mb-8">Выберите категорию, чтобы оказать услугу...</h3>
         <div className="grid grid-cols-5 gap-4">
-          {CATEGORIES_LIST.map(cat=>{
+          {CATEGORIES_LIST.map(cat => {
             const isSel = selected.includes(cat.key);
             return (
               <div key={cat.key} className="border border-gray-200 rounded-2xl p-4 flex flex-col items-center text-center gap-3 h-full">
-                <img src={CATEGORY_META[cat.key].img} className="w-20 h-20 object-contain" alt={cat.label}/>
+                <img src={CATEGORY_META[cat.key].img} className="w-20 h-20 object-contain" alt={cat.label} />
                 <div>
                   <p className="font-semibold text-gray-800 text-xs leading-tight">{cat.label}</p>
                   <p className="text-[10px] text-gray-400 leading-tight mt-0.5">{cat.desc}</p>
                 </div>
-                <button onClick={()=>onToggle(cat.key)}
+                <button onClick={() => onToggle(cat.key)}
                   className="w-full py-2 text-xs font-bold text-white rounded-lg transition-opacity hover:opacity-90 mt-auto"
-                  style={{background:isSel?"#EF4444":GREEN}}>
-                  {isSel?"Убрать":"Выбрать"}
+                  style={{ background: isSel ? "#EF4444" : GREEN }}>
+                  {isSel ? "Убрать" : "Выбрать"}
                 </button>
               </div>
             );
@@ -2617,7 +2652,7 @@ function CategoryPickerModal({ selected, onToggle, onClose }: {
   );
 }
 
-function DeleteAccountModal({ onConfirm, onClose }: { onConfirm:()=>void; onClose:()=>void }) {
+function DeleteAccountModal({ onConfirm, onClose }: { onConfirm: () => void; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
@@ -2627,14 +2662,14 @@ function DeleteAccountModal({ onConfirm, onClose }: { onConfirm:()=>void; onClos
         </p>
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">Отмена</button>
-          <button onClick={onConfirm} className="flex-1 py-2.5 text-xs font-bold text-white rounded-xl hover:opacity-90 transition-opacity" style={{background:"#EF4444"}}>Удалить</button>
+          <button onClick={onConfirm} className="flex-1 py-2.5 text-xs font-bold text-white rounded-xl hover:opacity-90 transition-opacity" style={{ background: "#EF4444" }}>Удалить</button>
         </div>
       </div>
     </div>
   );
 }
 
-function UnsavedChangesModal({ onSave, onDiscard }: { onSave:()=>void; onDiscard:()=>void }) {
+function UnsavedChangesModal({ onSave, onDiscard }: { onSave: () => void; onDiscard: () => void }) {
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
@@ -2642,7 +2677,7 @@ function UnsavedChangesModal({ onSave, onDiscard }: { onSave:()=>void; onDiscard
         <p className="text-xs text-gray-500 mb-5 leading-relaxed">У вас есть несохранённые изменения в настройках аккаунта. Сохранить их перед уходом?</p>
         <div className="flex gap-3">
           <button onClick={onDiscard} className="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">Не сохранять</button>
-          <button onClick={onSave} className="flex-1 py-2.5 text-xs font-bold text-white rounded-xl hover:opacity-90 transition-opacity" style={{background:BLUE}}>Сохранить</button>
+          <button onClick={onSave} className="flex-1 py-2.5 text-xs font-bold text-white rounded-xl hover:opacity-90 transition-opacity" style={{ background: BLUE }}>Сохранить</button>
         </div>
       </div>
     </div>
@@ -2651,70 +2686,70 @@ function UnsavedChangesModal({ onSave, onDiscard }: { onSave:()=>void; onDiscard
 
 function DocumentsView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingIdx, setPendingIdx] = useState<number|null>(null);
-  const [docs, setDocs] = useState<Array<{type:string;date:string;size:string}|null>>([null,null,null]);
+  const [pendingIdx, setPendingIdx] = useState<number | null>(null);
+  const [docs, setDocs] = useState<Array<{ type: string; date: string; size: string } | null>>([null, null, null]);
 
-  const handleUploadClick = (i:number) => { setPendingIdx(i); fileInputRef.current?.click(); };
-  const handleFileChange = (e:React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadClick = (i: number) => { setPendingIdx(i); fileInputRef.current?.click(); };
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0] && pendingIdx !== null) {
       const f = e.target.files[0];
       const ext = f.name.split(".").pop()?.toUpperCase() ?? "PDF";
-      const kb = Math.max(1, Math.round(f.size/1024));
+      const kb = Math.max(1, Math.round(f.size / 1024));
       const d = new Date();
-      const date = `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
-      setDocs(prev=>{ const n=[...prev]; n[pendingIdx]={type:ext,date,size:`${kb} KB`}; return n; });
-      e.target.value="";
+      const date = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+      setDocs(prev => { const n = [...prev]; n[pendingIdx] = { type: ext, date, size: `${kb} KB` }; return n; });
+      e.target.value = "";
       setPendingIdx(null);
     }
   };
 
-  const allDone = docs.every(d=>d!==null);
+  const allDone = docs.every(d => d !== null);
 
   return (
     <div className="space-y-4">
-      <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFileChange}/>
+      <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFileChange} />
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-gray-100">
               <th className="px-5 py-3.5 text-left font-semibold text-gray-600">Название</th>
               <th className="px-5 py-3.5 text-left font-semibold text-gray-600">Тип</th>
-              {allDone&&<><th className="px-5 py-3.5 text-left font-semibold text-gray-600">Дата</th><th className="px-5 py-3.5 text-left font-semibold text-gray-600">Размер</th></>}
+              {allDone && <><th className="px-5 py-3.5 text-left font-semibold text-gray-600">Дата</th><th className="px-5 py-3.5 text-left font-semibold text-gray-600">Размер</th></>}
               <th className="px-5 py-3.5 text-right font-semibold text-gray-600">Действие</th>
             </tr>
           </thead>
           <tbody>
-            {REQUIRED_DOCS.map((name,i)=>(
+            {REQUIRED_DOCS.map((name, i) => (
               <tr key={i} className="border-b border-gray-50 last:border-b-0">
                 <td className="px-5 py-3.5">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center shrink-0">
-                      <svg className="w-4 h-4" style={{color:"#EF4444"}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                      <svg className="w-4 h-4" style={{ color: "#EF4444" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
                       </svg>
                     </div>
                     <span className="text-gray-700 font-medium">{name}</span>
                   </div>
                 </td>
                 <td className="px-5 py-3.5 text-gray-500">{docs[i]?.type ?? "PDF"}</td>
-                {allDone&&<><td className="px-5 py-3.5 text-gray-500">{docs[i]?.date}</td><td className="px-5 py-3.5 text-gray-500">{docs[i]?.size}</td></>}
+                {allDone && <><td className="px-5 py-3.5 text-gray-500">{docs[i]?.date}</td><td className="px-5 py-3.5 text-gray-500">{docs[i]?.size}</td></>}
                 <td className="px-5 py-3.5 text-right">
                   {docs[i] ? (
-                    <button className="px-4 py-1.5 text-xs font-bold text-white rounded-lg" style={{background:BLUE}}>открыть</button>
+                    <button className="px-4 py-1.5 text-xs font-bold text-white rounded-lg" style={{ background: BLUE }}>открыть</button>
                   ) : (
-                    <button onClick={()=>handleUploadClick(i)} className="px-4 py-1.5 text-xs font-bold text-white rounded-lg" style={{background:GREEN}}>загрузить</button>
+                    <button onClick={() => handleUploadClick(i)} className="px-4 py-1.5 text-xs font-bold text-white rounded-lg" style={{ background: GREEN }}>загрузить</button>
                   )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {!allDone&&<p className="text-right text-[10px] text-gray-400 px-5 pb-3">* Обязательно загрузить эти документы</p>}
+        {!allDone && <p className="text-right text-[10px] text-gray-400 px-5 pb-3">* Обязательно загрузить эти документы</p>}
       </div>
-      {allDone&&(
+      {allDone && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{background:"#EFF6FF"}}>
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#EFF6FF" }}>
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
           </div>
           <div>
             <p className="font-bold text-gray-800 text-sm">Безопасность</p>
@@ -2727,31 +2762,31 @@ function DocumentsView() {
 }
 
 function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
-  onDirtyChange: (dirty:boolean)=>void;
-  settingsSaveRef: React.MutableRefObject<(()=>void)|null>;
+  onDirtyChange: (dirty: boolean) => void;
+  settingsSaveRef: React.MutableRefObject<(() => void) | null>;
 }) {
   const { currentUser, updateProfile, uploadAvatar, deleteAvatar, updateCategories, deleteAccount, logout } = useAuth();
   if (!currentUser) return null;
   const u = currentUser;
 
-  const [settingsView, setSettingsView] = useState<"profile"|"documents">("profile");
-  const [firstName,    setFirstName]    = useState(u.firstName);
-  const [lastName,     setLastName]     = useState(u.lastName);
-  const [email,        setEmail]        = useState(u.email);
-  const [phone,        setPhone]        = useState(u.phone);
-  const [city,         setCity]         = useState(u.city ?? "almaty");
-  const [role,         setRole]         = useState(u.role);
-  const [categories,   setCategories]   = useState<string[]>(u.categories ?? []);
+  const [settingsView, setSettingsView] = useState<"profile" | "documents">("profile");
+  const [firstName, setFirstName] = useState(u.firstName);
+  const [lastName, setLastName] = useState(u.lastName);
+  const [email, setEmail] = useState(u.email);
+  const [phone, setPhone] = useState(u.phone);
+  const [city, setCity] = useState(u.city ?? "almaty");
+  const [role, setRole] = useState(u.role);
+  const [categories, setCategories] = useState<string[]>(u.categories ?? []);
   const [emailEditing, setEmailEditing] = useState(false);
   const [phoneEditing, setPhoneEditing] = useState(false);
-  const [avatarSrc,  setAvatarSrc]  = useState<string|null>(u.avatarUrl ?? null);
-  const [avatarFile, setAvatarFile] = useState<File|null>(null);
-  const [saving,       setSaving]       = useState(false);
-  const [saveError,    setSaveError]    = useState<string|null>(null);
+  const [avatarSrc, setAvatarSrc] = useState<string | null>(u.avatarUrl ?? null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const [showPasswordModal,  setShowPasswordModal]  = useState(false);
-  const [showCategoryModal,  setShowCategoryModal]  = useState(false);
-  const [showDeleteModal,    setShowDeleteModal]     = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const initRef = useRef({
     firstName: u.firstName, lastName: u.lastName, email: u.email,
@@ -2761,15 +2796,15 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
 
   const isDirty =
     firstName !== initRef.current.firstName ||
-    lastName  !== initRef.current.lastName  ||
-    email     !== initRef.current.email     ||
-    phone     !== initRef.current.phone     ||
-    city      !== initRef.current.city      ||
-    role      !== initRef.current.role      ||
-    avatarFile !== null                     ||
-    (role==="volunteer" && categories.join(",") !== initRef.current.categories);
+    lastName !== initRef.current.lastName ||
+    email !== initRef.current.email ||
+    phone !== initRef.current.phone ||
+    city !== initRef.current.city ||
+    role !== initRef.current.role ||
+    avatarFile !== null ||
+    (role === "volunteer" && categories.join(",") !== initRef.current.categories);
 
-  useEffect(() => { onDirtyChange(isDirty); }, [firstName,lastName,email,phone,city,role,categories]);
+  useEffect(() => { onDirtyChange(isDirty); }, [firstName, lastName, email, phone, city, role, categories]);
 
   settingsSaveRef.current = async () => {
     setSaving(true);
@@ -2792,23 +2827,23 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
 
   const EditPen = () => (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" strokeWidth="2"/>
-      <path d="m18.5 2.5 2 2L10 15l-2.5.5.5-2.5L18.5 2.5z" strokeWidth="2"/>
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" strokeWidth="2" />
+      <path d="m18.5 2.5 2 2L10 15l-2.5.5.5-2.5L18.5 2.5z" strokeWidth="2" />
     </svg>
   );
   const CheckIcon = () => (
-    <svg className="w-4 h-4" fill="none" stroke={GREEN} viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" strokeWidth="2.5"/></svg>
+    <svg className="w-4 h-4" fill="none" stroke={GREEN} viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" strokeWidth="2.5" /></svg>
   );
 
   if (settingsView === "documents") {
     return (
       <div className="space-y-4">
-        <button onClick={()=>setSettingsView("profile")}
+        <button onClick={() => setSettingsView("profile")}
           className="flex items-center gap-1.5 text-xs font-semibold transition-opacity hover:opacity-75"
-          style={{color:BLUE}}>
-          <ArrowLeft className="w-4 h-4"/> Назад к профилю
+          style={{ color: BLUE }}>
+          <ArrowLeft className="w-4 h-4" /> Назад к профилю
         </button>
-        <DocumentsView/>
+        <DocumentsView />
       </div>
     );
   }
@@ -2821,46 +2856,46 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
       <div className="flex items-start gap-5">
         <div className="shrink-0">
           {avatarSrc
-            ? <img src={avatarSrc} className="w-20 h-20 rounded-full object-cover border border-gray-200"/>
+            ? <img src={avatarSrc} className="w-20 h-20 rounded-full object-cover border border-gray-200" />
             : <div className="w-20 h-20 rounded-full flex items-center justify-center text-white font-bold text-xl"
-                style={{background:BLUE}}>
-                {(u.firstName[0]+(u.lastName?.[0]??'')).toUpperCase()}
-              </div>
+              style={{ background: BLUE }}>
+              {(u.firstName[0] + (u.lastName?.[0] ?? '')).toUpperCase()}
+            </div>
           }
         </div>
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center gap-3">
             <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/gif" className="hidden"
-              onChange={e=>{
+              onChange={e => {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 setAvatarFile(file);
                 setAvatarSrc(URL.createObjectURL(file));
-              }}/>
-            <button onClick={()=>avatarInputRef.current?.click()}
+              }} />
+            <button onClick={() => avatarInputRef.current?.click()}
               className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white rounded-xl hover:opacity-90 transition-opacity"
-              style={{background:BLUE}}>
+              style={{ background: BLUE }}>
               + Изменить изображение
             </button>
-            <button onClick={async()=>{
-                setAvatarSrc(null);
-                setAvatarFile(null);
-                try { await deleteAvatar(); } catch {}
-              }}
+            <button onClick={async () => {
+              setAvatarSrc(null);
+              setAvatarFile(null);
+              try { await deleteAvatar(); } catch { }
+            }}
               className="px-4 py-2 text-xs font-semibold rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
               Удалить изображение
             </button>
           </div>
           <p className="text-[11px] text-gray-400">Мы поддерживаем формат PNG, JPEG и GIF размером менее 2 МБ</p>
           <div className="flex gap-2">
-            <button onClick={()=>setRole("elderly")}
+            <button onClick={() => setRole("elderly")}
               className="px-4 py-1.5 text-xs font-semibold rounded-xl transition-colors"
-              style={role==="elderly"?{background:BLUE,color:"white",border:"none"}:{background:"white",color:BLUE,border:`1px solid ${BLUE}`}}>
+              style={role === "elderly" ? { background: BLUE, color: "white", border: "none" } : { background: "white", color: BLUE, border: `1px solid ${BLUE}` }}>
               Запросить помощь
             </button>
-            <button onClick={()=>setRole("volunteer")}
+            <button onClick={() => setRole("volunteer")}
               className="px-4 py-1.5 text-xs font-semibold rounded-xl transition-colors"
-              style={role==="volunteer"?{background:BLUE,color:"white",border:"none"}:{background:"white",color:BLUE,border:`1px solid ${BLUE}`}}>
+              style={role === "volunteer" ? { background: BLUE, color: "white", border: "none" } : { background: "white", color: BLUE, border: `1px solid ${BLUE}` }}>
               Оказать помощь
             </button>
           </div>
@@ -2868,25 +2903,25 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
       </div>
 
       {/* ── Categories (volunteer only) ── */}
-      {role==="volunteer" && (
+      {role === "volunteer" && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-gray-700">Категории</label>
             <span className="text-[10px] text-gray-400">Добавить ещё...</span>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
-            {categories.map(key=>(
+            {categories.map(key => (
               <div key={key} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
-                style={{background:BLUE}}>
+                style={{ background: BLUE }}>
                 {CATEGORY_META[key]?.label ?? key}
-                <button onClick={()=>setCategories(p=>p.filter(c=>c!==key))}
+                <button onClick={() => setCategories(p => p.filter(c => c !== key))}
                   className="text-white/80 hover:text-white font-bold leading-none">✕</button>
               </div>
             ))}
-            <button onClick={()=>setShowCategoryModal(true)}
+            <button onClick={() => setShowCategoryModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:border-blue-300 transition-colors">
-              {categories.length===0?"Добавить категорию": CATEGORIES_LIST.find(c=>!categories.includes(c.key))?.label ?? "Добавить ещё"}
-              <ChevronDown className="w-3.5 h-3.5"/>
+              {categories.length === 0 ? "Добавить категорию" : CATEGORIES_LIST.find(c => !categories.includes(c.key))?.label ?? "Добавить ещё"}
+              <ChevronDown className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -2897,36 +2932,36 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-semibold text-gray-700 block mb-1">Имя</label>
-            <input value={firstName} onChange={e=>setFirstName(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all"/>
+            <input value={firstName} onChange={e => setFirstName(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all" />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-700 block mb-1">Фамилия</label>
-            <input value={lastName} onChange={e=>setLastName(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all"/>
+            <input value={lastName} onChange={e => setLastName(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all" />
           </div>
         </div>
 
         <div>
           <label className="text-xs font-semibold text-gray-700 block mb-1">Город</label>
           <div className="relative">
-            <select value={city} onChange={e=>setCity(e.target.value)}
+            <select value={city} onChange={e => setCity(e.target.value)}
               className="w-full px-3 py-2.5 pr-8 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all appearance-none bg-white cursor-pointer">
               <option value="almaty">Алматы</option>
               <option value="astana">Астана</option>
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"/>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
         </div>
 
         <div>
           <label className="text-xs font-semibold text-gray-700 block mb-1">Электронная почта</label>
           <div className="relative">
-            <input type="email" value={email} readOnly={!emailEditing} onChange={e=>setEmail(e.target.value)}
-              className={`w-full px-3 py-2.5 pr-10 rounded-xl border text-xs outline-none transition-all ${emailEditing?"border-blue-400":"border-gray-200"}`}/>
-            <button type="button" onClick={()=>setEmailEditing(v=>!v)}
+            <input type="email" value={email} readOnly={!emailEditing} onChange={e => setEmail(e.target.value)}
+              className={`w-full px-3 py-2.5 pr-10 rounded-xl border text-xs outline-none transition-all ${emailEditing ? "border-blue-400" : "border-gray-200"}`} />
+            <button type="button" onClick={() => setEmailEditing(v => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-500 transition-colors">
-              {emailEditing ? <CheckIcon/> : <EditPen/>}
+              {emailEditing ? <CheckIcon /> : <EditPen />}
             </button>
           </div>
         </div>
@@ -2934,11 +2969,11 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
         <div>
           <label className="text-xs font-semibold text-gray-700 block mb-1">Номер телефона</label>
           <div className="relative">
-            <input type="tel" value={phone} readOnly={!phoneEditing} onChange={e=>setPhone(e.target.value)}
-              className={`w-full px-3 py-2.5 pr-10 rounded-xl border text-xs outline-none transition-all ${phoneEditing?"border-blue-400":"border-gray-200"}`}/>
-            <button type="button" onClick={()=>setPhoneEditing(v=>!v)}
+            <input type="tel" value={phone} readOnly={!phoneEditing} onChange={e => setPhone(e.target.value)}
+              className={`w-full px-3 py-2.5 pr-10 rounded-xl border text-xs outline-none transition-all ${phoneEditing ? "border-blue-400" : "border-gray-200"}`} />
+            <button type="button" onClick={() => setPhoneEditing(v => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-500 transition-colors">
-              {phoneEditing ? <CheckIcon/> : <EditPen/>}
+              {phoneEditing ? <CheckIcon /> : <EditPen />}
             </button>
           </div>
         </div>
@@ -2947,10 +2982,10 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
           <label className="text-xs font-semibold text-gray-700 block mb-1">Пароль</label>
           <div className="relative">
             <input type="password" value="••••••••••" readOnly
-              className="w-full px-3 py-2.5 pr-10 rounded-xl border border-gray-200 text-xs outline-none"/>
-            <button type="button" onClick={()=>setShowPasswordModal(true)}
+              className="w-full px-3 py-2.5 pr-10 rounded-xl border border-gray-200 text-xs outline-none" />
+            <button type="button" onClick={() => setShowPasswordModal(true)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-500 transition-colors">
-              <EditPen/>
+              <EditPen />
             </button>
           </div>
         </div>
@@ -2961,13 +2996,13 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
         <div className="flex justify-end">
           <button onClick={handleSave} disabled={!isDirty || saving}
             className="px-6 py-2.5 text-xs font-bold text-white rounded-xl transition-opacity"
-            style={{background:(isDirty&&!saving)?GREEN:"#9CA3AF", cursor:(isDirty&&!saving)?"pointer":"not-allowed", opacity:(isDirty&&!saving)?1:0.7}}>
+            style={{ background: (isDirty && !saving) ? GREEN : "#9CA3AF", cursor: (isDirty && !saving) ? "pointer" : "not-allowed", opacity: (isDirty && !saving) ? 1 : 0.7 }}>
             {saving ? "Сохраняем..." : "сохранить"}
           </button>
         </div>
       </div>
 
-      <div className="border-t border-gray-100"/>
+      <div className="border-t border-gray-100" />
 
       {/* ── Documents ── */}
       <div className="flex items-center justify-between">
@@ -2975,35 +3010,35 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
           <h3 className="font-bold text-gray-800 text-sm">Мои документы</h3>
           <p className="text-[11px] text-gray-400 mt-0.5">Ваши документы защищены и доступны только вам и доверенным лицам.</p>
         </div>
-        <button onClick={()=>setSettingsView("documents")}
+        <button onClick={() => setSettingsView("documents")}
           className="px-4 py-2 text-xs font-semibold rounded-xl border hover:bg-blue-50 transition-colors"
-          style={{color:BLUE,borderColor:"#BFDBFE"}}>
+          style={{ color: BLUE, borderColor: "#BFDBFE" }}>
           посмотреть
         </button>
       </div>
 
-      <div className="border-t border-gray-100"/>
+      <div className="border-t border-gray-100" />
 
       {/* ── Delete account ── */}
       <div className="flex items-start justify-between gap-6">
         <div className="min-w-0">
-          <p className="font-bold text-sm" style={{color:"#EF4444"}}>Удалить мой аккаунт</p>
+          <p className="font-bold text-sm" style={{ color: "#EF4444" }}>Удалить мой аккаунт</p>
           <p className="text-[11px] text-gray-400 mt-0.5 max-w-xl leading-relaxed">
             Безвозвратно удалите учётную запись со всеми связанными данными, включая личную информацию, историю активности и документы, без возможности последующего восстановления. После удаления доступ ко всем рабочим областям, сервисам и функциям платформы будет полностью прекращён.
           </p>
         </div>
-        <button onClick={()=>setShowDeleteModal(true)}
+        <button onClick={() => setShowDeleteModal(true)}
           className="px-4 py-2 text-xs font-bold text-white rounded-xl shrink-0 hover:opacity-90 transition-opacity"
-          style={{background:"#EF4444"}}>
+          style={{ background: "#EF4444" }}>
           удалить аккаунт
         </button>
       </div>
 
-      {showPasswordModal  && <PasswordResetModal onClose={()=>setShowPasswordModal(false)}/>}
-      {showCategoryModal  && <CategoryPickerModal selected={categories} onToggle={k=>setCategories(p=>p.includes(k)?p.filter(c=>c!==k):[...p,k])} onClose={()=>setShowCategoryModal(false)}/>}
-      {showDeleteModal    && <DeleteAccountModal onClose={()=>setShowDeleteModal(false)} onConfirm={async()=>{
+      {showPasswordModal && <PasswordResetModal onClose={() => setShowPasswordModal(false)} />}
+      {showCategoryModal && <CategoryPickerModal selected={categories} onToggle={k => setCategories(p => p.includes(k) ? p.filter(c => c !== k) : [...p, k])} onClose={() => setShowCategoryModal(false)} />}
+      {showDeleteModal && <DeleteAccountModal onClose={() => setShowDeleteModal(false)} onConfirm={async () => {
         try { await deleteAccount(); } catch { logout(); }
-      }}/>}
+      }} />}
     </div>
   );
 }
@@ -3028,13 +3063,13 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
   openedChat: Chat | null;
   setOpenedChat: (chat: Chat | null) => void;
   onSettingsDirtyChange: (dirty: boolean) => void;
-  settingsSaveRef: React.MutableRefObject<(()=>void)|null>;
+  settingsSaveRef: React.MutableRefObject<(() => void) | null>;
 }) {
   const { t } = useLanguage();
   const isVolunteer = userRole === "volunteer";
   const [activeTab, setActiveTab] = useState<TabKey>("create");
   const [settingsDirtyLocal, setSettingsDirtyLocal] = useState(false);
-  const [pendingTab, setPendingTab] = useState<TabKey|null>(null);
+  const [pendingTab, setPendingTab] = useState<TabKey | null>(null);
   const [showUnsavedTab, setShowUnsavedTab] = useState(false);
   const [realtimeNotifs, setRealtimeNotifs] = useState<NotifItem[]>([]);
   const [cancelledRequestId, setCancelledRequestId] = useState<string | null>(null);
@@ -3046,7 +3081,7 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
   useEffect(() => {
     api.getNotifications()
       .then(list => setRealtimeNotifs(list.map(mapBackendNotification)))
-      .catch(() => {});
+      .catch(() => { });
   }, [userId]);
 
   useEffect(() => {
@@ -3060,7 +3095,7 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
           try {
             const data = JSON.parse(msg.body);
             const now = new Date();
-            const time = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+            const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
             const ts = now.toISOString();
 
             if (data.type === "NEW_RESPONSE") {
@@ -3173,28 +3208,28 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
     }
   };
 
-  if (activeNav==="messages") {
+  if (activeNav === "messages") {
     if (openedChat !== null) {
       return (
         <div style={{ height: "calc(100vh - 108px)" }}>
-          <ChatDetail chat={openedChat} myId={userId}/>
+          <ChatDetail chat={openedChat} myId={userId} />
         </div>
       );
     }
-    return <MessagesContent onOpenChat={setOpenedChat} myId={userId}/>;
+    return <MessagesContent onOpenChat={setOpenedChat} myId={userId} />;
   }
 
-  if (activeNav==="requests") return isVolunteer
-    ? <MyVolunteerRequestsContent cancelledRequestId={cancelledRequestId}/>
-    : <MyRequestsContent userId={userId}/>;
+  if (activeNav === "requests") return isVolunteer
+    ? <MyVolunteerRequestsContent cancelledRequestId={cancelledRequestId} />
+    : <MyRequestsContent userId={userId} />;
 
-  if (activeNav!=="dashboard") return <ComingSoon/>;
+  if (activeNav !== "dashboard") return <ComingSoon />;
 
-  const tabs: {key:TabKey;label:string}[] = [
-    {key:"create",        label: isVolunteer ? "Мои задачи" : t("dashboard.tabCreate")},
-    ...(!isVolunteer ? [{key:"search" as TabKey, label:t("dashboard.tabSearch")}] : []),
-    {key:"notifications", label:t("dashboard.tabNotifications")},
-    {key:"settings",      label:t("dashboard.tabSettings")},
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: "create", label: isVolunteer ? "Мои задачи" : t("dashboard.tabCreate") },
+    ...(!isVolunteer ? [{ key: "search" as TabKey, label: t("dashboard.tabSearch") }] : []),
+    { key: "notifications", label: t("dashboard.tabNotifications") },
+    { key: "settings", label: t("dashboard.tabSettings") },
   ];
 
   return (
@@ -3202,22 +3237,22 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
       <div className="space-y-4">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex overflow-x-auto snap-x" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
-            {tabs.map(tab=>(
-              <button key={tab.key} onClick={()=>handleTabClick(tab.key)}
+            {tabs.map(tab => (
+              <button key={tab.key} onClick={() => handleTabClick(tab.key)}
                 className="px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 shrink-0 snap-start"
-                style={activeTab===tab.key?{color:BLUE,borderColor:BLUE,background:"white"}:{color:"#6b7280",borderColor:"transparent"}}>
+                style={activeTab === tab.key ? { color: BLUE, borderColor: BLUE, background: "white" } : { color: "#6b7280", borderColor: "transparent" }}>
                 {tab.label}
               </button>
             ))}
           </div>
         </div>
-        {activeTab==="create"        && (isVolunteer ? <HelperDashboard user={{firstName}} onOpenChat={handleOpenChat} cancelledRequestId={cancelledRequestId} declinedRequestId={declinedRequestId} acceptedRequestId={acceptedRequestId} activeReqsVersion={activeReqsVersion}/> : <CreateRequestTab userId={userId}/>)}
-        {activeTab==="search"        && <FindHelpersTab userId={userId}/>}
-        {activeTab==="notifications" && <NotificationsTab realtimeNotifs={realtimeNotifs} onAcceptResponse={handleAcceptResponse} onDeclineResponse={handleDeclineResponse} processingResponseId={processingResponseId}/>}
-        {activeTab==="settings"      && <AccountSettingsTab onDirtyChange={handleDirtyChange} settingsSaveRef={settingsSaveRef}/>}
+        {activeTab === "create" && (isVolunteer ? <HelperDashboard user={{ firstName }} onOpenChat={handleOpenChat} cancelledRequestId={cancelledRequestId} declinedRequestId={declinedRequestId} acceptedRequestId={acceptedRequestId} activeReqsVersion={activeReqsVersion} /> : <CreateRequestTab userId={userId} />)}
+        {activeTab === "search" && <FindHelpersTab userId={userId} />}
+        {activeTab === "notifications" && <NotificationsTab realtimeNotifs={realtimeNotifs} onAcceptResponse={handleAcceptResponse} onDeclineResponse={handleDeclineResponse} processingResponseId={processingResponseId} />}
+        {activeTab === "settings" && <AccountSettingsTab onDirtyChange={handleDirtyChange} settingsSaveRef={settingsSaveRef} />}
       </div>
       {showUnsavedTab && (
-        <UnsavedChangesModal onSave={handleUnsavedSave} onDiscard={handleUnsavedDiscard}/>
+        <UnsavedChangesModal onSave={handleUnsavedSave} onDiscard={handleUnsavedDiscard} />
       )}
     </>
   );
@@ -3230,10 +3265,10 @@ function DashboardPage() {
   const [activeNav, setActiveNav] = useState<NavKey>("dashboard");
   const [openedChat, setOpenedChat] = useState<Chat | null>(null);
   const [settingsDirty, setSettingsDirty] = useState(false);
-  const [pendingNav, setPendingNav] = useState<NavKey|null>(null);
+  const [pendingNav, setPendingNav] = useState<NavKey | null>(null);
   const [showNavUnsaved, setShowNavUnsaved] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const settingsSaveRef = useRef<(()=>void)|null>(null);
+  const settingsSaveRef = useRef<(() => void) | null>(null);
 
   if (!currentUser) return null;
 
@@ -3266,7 +3301,7 @@ function DashboardPage() {
         className="flex items-center gap-1.5 font-bold text-sm transition-opacity hover:opacity-75"
         style={{ color: BLUE }}
       >
-        <ArrowLeft className="w-4 h-4"/>
+        <ArrowLeft className="w-4 h-4" />
         {navTitleMap[activeNav]}
       </button>
     </div>
@@ -3282,29 +3317,29 @@ function DashboardPage() {
   return (
     <div className="min-h-screen flex bg-gray-50">
       <div className="hidden md:flex">
-        <Sidebar activeNav={activeNav} setActiveNav={handleNavChange} user={currentUser}/>
+        <Sidebar activeNav={activeNav} setActiveNav={handleNavChange} user={currentUser} />
       </div>
 
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-[100] flex bg-black/40 backdrop-blur-sm md:hidden" onClick={() => setMobileMenuOpen(false)}>
-          <div className="w-[85%] max-w-[320px] h-full bg-[#dae9f4] rounded-r-3xl overflow-hidden flex flex-col pt-6 relative shadow-2xl" onClick={e=>e.stopPropagation()}>
+          <div className="w-[85%] max-w-[320px] h-full bg-[#dae9f4] rounded-r-3xl overflow-hidden flex flex-col pt-6 relative shadow-2xl" onClick={e => e.stopPropagation()}>
             <button onClick={() => setMobileMenuOpen(false)} className="absolute top-6 right-6 text-[#4B688A] hover:text-[#2E486D] transition-colors p-1">
-               <X className="w-6 h-6"/>
+              <X className="w-6 h-6" />
             </button>
             <div className="px-6 mb-8 flex items-center gap-3">
-               <img src={logoImg} alt="Qamqor Logo" className="w-12 h-12 rounded-full border-2 border-[#5bb8f5] bg-white object-contain p-1 shadow-sm" />
-               <p className="font-bold text-[#2E486D] text-2xl tracking-wide uppercase">Qamqor</p>
+              <img src={logoImg} alt="Qamqor Logo" className="w-12 h-12 rounded-full border-2 border-[#5bb8f5] bg-white object-contain p-1 shadow-sm" />
+              <p className="font-bold text-[#2E486D] text-2xl tracking-wide uppercase">Qamqor</p>
             </div>
             <nav className="flex-1 px-4 flex flex-col gap-1.5">
-              <button onClick={() => handleNavChange("dashboard")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav==="dashboard"?"bg-white/60 font-bold text-[#2E486D] shadow-sm":"text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navDashboard")}</button>
-              <button onClick={() => handleNavChange("messages")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav==="messages"?"bg-white/60 font-bold text-[#2E486D] shadow-sm":"text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navMessages")}</button>
-              <button onClick={() => handleNavChange("requests")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav==="requests"?"bg-white/60 font-bold text-[#2E486D] shadow-sm":"text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navMyRequests")}</button>
-              <button onClick={() => handleNavChange("statistics")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav==="statistics"?"bg-white/60 font-bold text-[#2E486D] shadow-sm":"text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navStatistics")}</button>
-              <button onClick={() => handleNavChange("support")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav==="support"?"bg-white/60 font-bold text-[#2E486D] shadow-sm":"text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navSupport")}</button>
+              <button onClick={() => handleNavChange("dashboard")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav === "dashboard" ? "bg-white/60 font-bold text-[#2E486D] shadow-sm" : "text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navDashboard")}</button>
+              <button onClick={() => handleNavChange("messages")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav === "messages" ? "bg-white/60 font-bold text-[#2E486D] shadow-sm" : "text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navMessages")}</button>
+              <button onClick={() => handleNavChange("requests")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav === "requests" ? "bg-white/60 font-bold text-[#2E486D] shadow-sm" : "text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navMyRequests")}</button>
+              <button onClick={() => handleNavChange("statistics")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav === "statistics" ? "bg-white/60 font-bold text-[#2E486D] shadow-sm" : "text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navStatistics")}</button>
+              <button onClick={() => handleNavChange("support")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav === "support" ? "bg-white/60 font-bold text-[#2E486D] shadow-sm" : "text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navSupport")}</button>
             </nav>
             <div className="p-6 pb-8 mt-auto">
               <button onClick={() => currentUser && window.location.replace("/")} className="bg-white rounded-full px-5 py-3.5 text-red-500 font-semibold flex items-center justify-center gap-2 border border-white shadow-sm w-full hover:bg-red-50 transition-colors">
-                <LogOut className="w-4 h-4"/> {t("dashboard.navLogout")}
+                <LogOut className="w-4 h-4" /> {t("dashboard.navLogout")}
               </button>
             </div>
           </div>
@@ -3316,8 +3351,8 @@ function DashboardPage() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between shrink-0 p-3 md:px-5 md:py-3">
             {headerLeft}
             <div className="flex items-center gap-2">
-              <AccessibilityToggle/>
-              <LanguageSwitcher/>
+              <AccessibilityToggle />
+              <LanguageSwitcher />
             </div>
           </div>
 
@@ -3337,13 +3372,13 @@ function DashboardPage() {
 
       {showNavUnsaved && (
         <UnsavedChangesModal
-          onSave={()=>{
+          onSave={() => {
             settingsSaveRef.current?.();
             setSettingsDirty(false);
             setShowNavUnsaved(false);
             if (pendingNav) { setActiveNav(pendingNav); setOpenedChat(null); setPendingNav(null); }
           }}
-          onDiscard={()=>{
+          onDiscard={() => {
             setSettingsDirty(false);
             setShowNavUnsaved(false);
             if (pendingNav) { setActiveNav(pendingNav); setOpenedChat(null); setPendingNav(null); }
@@ -3357,7 +3392,7 @@ function DashboardPage() {
 export default function DashboardPageWithGuard() {
   return (
     <AuthGuard>
-      <DashboardPage/>
+      <DashboardPage />
     </AuthGuard>
   );
 }

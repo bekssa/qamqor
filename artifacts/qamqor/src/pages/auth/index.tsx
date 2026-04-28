@@ -462,6 +462,16 @@ export default function AuthPage() {
                 }
               />
 
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => navigate("/auth/forgot")}
+                  className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  {t("auth.forgotTitle")}
+                </button>
+              </div>
+
               {submitError && (
                 <p className="text-sm text-red-500 text-center bg-red-50 rounded-lg py-2 px-4">{submitError}</p>
               )}

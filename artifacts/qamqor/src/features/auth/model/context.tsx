@@ -46,6 +46,7 @@ interface AuthContextType {
   sendOtp: (email: string) => Promise<boolean>;
   verifyOtp: (code: string) => Promise<void>;
   loginWithPassword: (email: string, password: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
 
   checkUserExists: (credential: string) => boolean;
   updateProfile: (updates: Partial<User>) => Promise<void>;
@@ -157,6 +158,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     flushSync(() => {
       setCurrentUser(authUser);
     });
+  };
+
+  const updatePassword = async (password: string): Promise<void> => {
+    await api.updatePassword(password);
   };
 
   const updateProfile = async (updates: Partial<User>): Promise<void> => {
@@ -286,6 +291,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sendOtp,
         verifyOtp,
         loginWithPassword,
+        updatePassword,
         checkUserExists,
         updateProfile,
         uploadAvatar,

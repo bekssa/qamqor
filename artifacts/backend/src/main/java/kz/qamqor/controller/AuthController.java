@@ -84,4 +84,21 @@ public class AuthController {
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
     }
+
+    @Operation(
+        summary = "Изменить пароль",
+        description = "Изменяет пароль текущего авторизованного пользователя.",
+        responses = {
+            @ApiResponse(responseCode = "200", description = "Пароль изменен"),
+            @ApiResponse(responseCode = "401", description = "Не авторизован",
+                content = @Content(schema = @Schema(hidden = true)))
+        }
+    )
+    @PatchMapping("/password")
+    public ResponseEntity<Void> updatePassword(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal kz.qamqor.entity.User currentUser,
+            @RequestBody Map<String, String> body) {
+        authService.updatePassword(currentUser, body.get("password"));
+        return ResponseEntity.ok().build();
+    }
 }

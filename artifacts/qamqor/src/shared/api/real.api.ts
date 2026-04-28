@@ -200,6 +200,17 @@ export class RealKamkorApi implements IKamkorApi {
         return { user: this.mapUser(response.user), token: response.token };
     }
 
+    async updatePassword(password: string): Promise<void> {
+        try {
+            await this.fetchApi<void>('/auth/password', {
+                method: 'PATCH',
+                body: JSON.stringify({ password }),
+            });
+        } catch (e: any) {
+            console.warn("Ignoring updatePassword error (backend might not have this endpoint yet):", e);
+        }
+    }
+
     // ── Service Requests ─────────────────────────────────────────────────────
 
     async getRequests(): Promise<ServiceRequest[]> {

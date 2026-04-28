@@ -133,11 +133,11 @@ export class MockKamkorApi implements IKamkorApi {
     async getCategories() {
         await delay();
         return [
-            { key: 'household', label: 'Бытовая помощь',    description: 'уборка, приготовление еды' },
-            { key: 'medical',   label: 'Медицинская помощь', description: 'покупка лекарств, сопровождение' },
-            { key: 'escort',    label: 'Сопровождение',      description: 'поход в больницу, прогулка' },
-            { key: 'homework',  label: 'Домашние работы',    description: 'починка, мелкий ремонт' },
-            { key: 'shopping',  label: 'Покупки',            description: 'продукты, хозяйственные товары' },
+            { key: 'household', label: 'Бытовая помощь', description: 'уборка, приготовление еды' },
+            { key: 'medical', label: 'Медицинская помощь', description: 'покупка лекарств, сопровождение' },
+            { key: 'escort', label: 'Сопровождение', description: 'поход в больницу, прогулка' },
+            { key: 'homework', label: 'Домашние работы', description: 'починка, мелкий ремонт' },
+            { key: 'shopping', label: 'Покупки', description: 'продукты, хозяйственные товары' },
         ];
     }
 
@@ -185,6 +185,10 @@ export class MockKamkorApi implements IKamkorApi {
     async loginWithPassword(_email: string, _password: string): Promise<{ user: User; token: string }> {
         await delay();
         return { token: "mock_token_abc123", user: mockUsers[0] };
+    }
+
+    async updatePassword(_password: string): Promise<void> {
+        await delay();
     }
 
     async getChats(): Promise<Chat[]> { return []; }

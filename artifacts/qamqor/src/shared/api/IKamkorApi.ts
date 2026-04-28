@@ -45,6 +45,7 @@ export interface IKamkorApi {
         city?: string;
     }): Promise<{ user: User; token: string }>;
     loginWithPassword(email: string, password: string): Promise<{ user: User; token: string }>;
+    updatePassword(password: string): Promise<void>;
 
     // Reviews API
     getReviewsByUserId(userId: string): Promise<Review[]>;
