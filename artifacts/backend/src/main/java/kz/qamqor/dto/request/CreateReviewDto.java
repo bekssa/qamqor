@@ -6,5 +6,6 @@ public record CreateReviewDto(
     @NotBlank String authorId,
     @NotBlank String targetId,
     @Min(1) @Max(5) int rating,
-    String comment
+    String comment,
+    String requestId
 ) {}

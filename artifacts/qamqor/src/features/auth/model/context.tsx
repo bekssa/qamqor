@@ -14,6 +14,7 @@ export interface User {
   avatarUrl?: string;
   rating?: number;
   categories?: string[];
+  aboutMe?: string;
 }
 
 export interface PendingUser {
@@ -176,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         phone: updates.phone,
         city: updates.city,
         role: roleForApi,
+        aboutMe: updates.aboutMe,
       });
       setCurrentUser(prev => {
         if (!prev) return prev;
@@ -188,6 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           city: (backendUser as any).city ?? updates.city ?? prev.city,
           role: (backendUser.role as User['role']) ?? updates.role ?? prev.role,
           avatarUrl: backendUser.avatarUrl ?? prev.avatarUrl,
+          aboutMe: (backendUser as any).aboutMe ?? updates.aboutMe ?? prev.aboutMe,
         };
         localStorage.setItem(USER_KEY, JSON.stringify(merged));
         return merged;

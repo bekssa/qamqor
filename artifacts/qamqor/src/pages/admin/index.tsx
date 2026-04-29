@@ -292,23 +292,15 @@ function VerificationSection() {
 /* ── statistics section ── */
 function StatisticsSection() {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: "Пользователей", value: "—", color: BLUE, icon: "👥" },
-          { label: "Заявок создано", value: "—", color: GREEN, icon: "📋" },
-          { label: "Документов принято", value: "—", color: "#8B5CF6", icon: "✅" },
-        ].map(s => (
-          <div key={s.label} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
-            <p className="text-2xl mb-2">{s.icon}</p>
-            <p className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
-            <p className="text-[11px] text-gray-400 mt-1">{s.label}</p>
-          </div>
-        ))}
-      </div>
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <p className="text-xs text-gray-400 text-center">Расширенная статистика будет доступна в следующем обновлении</p>
-      </div>
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <iframe
+        title="диплом"
+        width="100%"
+        height="541"
+        src="https://app.powerbi.com/reportEmbed?reportId=9f87d303-055b-415c-a029-055439ae653a&autoAuth=true&ctid=347fd89f-696a-49ca-9f8b-9724f5750471"
+        frameBorder={0}
+        allowFullScreen
+      />
     </div>
   );
 }

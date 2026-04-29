@@ -26,6 +26,10 @@ public class Message {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String text;
 
+    /** True if OpenAI moderation flagged this message */
+    @Column(nullable = false)
+    private boolean flagged = false;
+
     @CreationTimestamp
     private Instant createdAt;
 }

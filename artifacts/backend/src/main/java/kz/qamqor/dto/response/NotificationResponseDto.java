@@ -10,13 +10,15 @@ public record NotificationResponseDto(
     String requestId,
     String requestTitle,
     String actorName,
+    String actorId,
     String responseId,
+    String status,
     Instant createdAt
 ) {
     public static NotificationResponseDto from(Notification n) {
         return new NotificationResponseDto(
             n.getId(), n.getType(), n.getRequestId(), n.getRequestTitle(),
-            n.getActorName(), n.getResponseId(), n.getCreatedAt()
+            n.getActorName(), n.getActorId(), n.getResponseId(), n.getStatus(), n.getCreatedAt()
         );
     }
 }

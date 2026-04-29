@@ -31,6 +31,9 @@ public class User {
     private String birthDate;
     private String city;
 
+    @Column(columnDefinition = "TEXT")
+    private String aboutMe;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role = Role.ELDERLY;

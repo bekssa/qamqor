@@ -4,11 +4,16 @@ import { ArrowLeft, Eye, EyeOff, CheckCircle } from "lucide-react";
 import { useLanguage } from "@features/language/model/context";
 import { useAuth } from "@features/auth/model/context";
 
-import logoImg from "@/assets/services/logo.png";
-
 const QamqorLogo = () => (
   <div className="flex flex-col items-center gap-1 mb-6">
-    <img src={logoImg} alt="Qamqor Logo" className="h-16 w-auto object-contain" />
+    <div className="w-16 h-16 rounded-full border-2 border-blue-500 flex items-center justify-center bg-white shadow-sm">
+      <svg viewBox="0 0 40 40" className="w-10 h-10" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="20" cy="12" r="5" fill="#F59E0B" />
+        <path d="M10 28c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="#1E40AF" strokeWidth="2.5" strokeLinecap="round" />
+        <path d="M16 22c-2 1-4 3-4 6" stroke="#43AD36" strokeWidth="2" strokeLinecap="round" />
+        <path d="M24 22c2 1 4 3 4 6" stroke="#43AD36" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </div>
     <span className="text-blue-700 font-bold text-xs tracking-[0.2em] uppercase">QAMQOR</span>
   </div>
 );
@@ -16,7 +21,7 @@ const QamqorLogo = () => (
 export default function ResetPasswordPage() {
   const [, navigate] = useLocation();
   const { t } = useLanguage();
-  const { setFlow, setResetTarget, updatePassword } = useAuth();
+  const { setFlow, setResetTarget } = useAuth();
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -34,56 +39,26 @@ export default function ResetPasswordPage() {
     return errs;
   };
 
-  const [submitError, setSubmitError] = useState("");
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitError("");
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
-    
-    try {
-      await updatePassword(password);
-      setSuccess(true);
-      setFlow(null);
-      setResetTarget(null);
-      setTimeout(() => navigate("/auth?tab=login"), 2000);
-    } catch (e) {
-      setSubmitError("Не удалось обновить пароль. Попробуйте позже.");
-    }
+    setSuccess(true);
+    setFlow(null);
+    setResetTarget(null);
+    setTimeout(() => navigate("/auth?tab=login"), 2000);
   };
 
   if (success) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-4">
-        <div className="w-full max-w-md text-center bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] p-10 sm:p-12">
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Пароль изменен</h2>
-          <p className="text-gray-500 text-sm mb-10">Ваш пароль успешно изменен</p>
-          
-          <div className="flex justify-center mb-10 text-blue-600">
-             <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-               {/* Lock Body */}
-               <rect x="5" y="10" width="14" height="11" rx="2" ry="2"></rect>
-               {/* Lock Handle */}
-               <path d="M7 10V7a5 5 0 0 1 10 0v3"></path>
-               
-               {/* The *** inside the lock body */}
-               {/* Left * */}
-               <path d="M8.5 14v3 M7.5 15h2 M7.5 16l2-2 M9.5 16l-2-2"></path>
-               {/* Middle * */}
-               <path d="M12 14v3 M11 15h2 M11 16l2-2 M13 16l-2-2"></path>
-               {/* Right * */}
-               <path d="M15.5 14v3 M14.5 15h2 M14.5 16l2-2 M16.5 16l-2-2"></path>
-             </svg>
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
+        <div className="text-center">
+          <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6" style={{ background: "#e8f7eb" }}>
+            <CheckCircle className="w-10 h-10" style={{ color: "#2C9C42" }} />
           </div>
-
-          <button
-            onClick={() => navigate("/auth?tab=login")}
-            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-md shadow-blue-200"
-          >
-            Вернуться к входу
-          </button>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">{t("auth.passwordChanged")}</h2>
+          <p className="text-gray-500 text-sm">{t("auth.tabLogin")}...</p>
         </div>
       </div>
     );
@@ -113,7 +88,7 @@ export default function ResetPasswordPage() {
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
-                  placeholder="должно быть не менее 8 символов"
+                  placeholder={t("auth.passwordPlaceholder")}
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); setErrors((p) => ({ ...p, password: undefined })); }}
                   className={`w-full px-4 py-3 pr-12 rounded-xl border text-sm outline-none transition-all
@@ -136,7 +111,7 @@ export default function ResetPasswordPage() {
               <div className="relative">
                 <input
                   type={showConfirm ? "text" : "password"}
-                  placeholder="должно быть не менее 8 символов"
+                  placeholder={t("auth.passwordPlaceholder")}
                   value={confirmPassword}
                   onChange={(e) => { setConfirmPassword(e.target.value); setErrors((p) => ({ ...p, confirm: undefined })); }}
                   className={`w-full px-4 py-3 pr-12 rounded-xl border text-sm outline-none transition-all
@@ -154,15 +129,11 @@ export default function ResetPasswordPage() {
               {errors.confirm && <p className="text-xs text-red-500">{errors.confirm}</p>}
             </div>
 
-            {submitError && (
-              <p className="text-sm text-red-500 text-center bg-red-50 rounded-lg py-2 px-4">{submitError}</p>
-            )}
-
             <button
               type="submit"
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors mt-2 shadow-md shadow-blue-200"
             >
-              Подтвердить
+              {t("auth.resetConfirm")}
             </button>
           </form>
         </div>

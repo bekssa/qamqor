@@ -202,5 +202,17 @@ export class MockKamkorApi implements IKamkorApi {
     async acceptResponse(_responseId: string): Promise<void> { await delay(); }
     async declineResponse(_responseId: string): Promise<void> { await delay(); }
     async getMyResponses(): Promise<{ requestId: string; status: import('./types').ResponseStatus }[]> { return []; }
-    async getNotifications(): Promise<{ id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; responseId: string | null; createdAt: string }[]> { return []; }
+    async getNotifications(): Promise<{ id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; actorId: string | null; responseId: string | null; status: string | null; createdAt: string }[]> { return []; }
+    async inviteHelper(_requestId: string, _volunteerId: string): Promise<void> { await delay(); }
+    async replyToInvite(_requestId: string, _accepted: boolean): Promise<void> { await delay(); }
+    async uploadDocument(_documentType: string, _file: File): Promise<import('./types').UserDocument> { await delay(); return {} as any; }
+    async getMyDocuments(): Promise<import('./types').UserDocument[]> { return []; }
+    async getAdminPendingDocuments(): Promise<import('./types').UserDocument[]> { return []; }
+    async getAdminAllDocuments(): Promise<import('./types').UserDocument[]> { return []; }
+    async approveDocument(_id: string): Promise<import('./types').UserDocument> { return {} as any; }
+    async rejectDocument(_id: string, _reason: string): Promise<import('./types').UserDocument> { return {} as any; }
+    async getModerationReports(): Promise<import('./types').ModerationReport[]> { return []; }
+    async reviewModerationReport(_id: string): Promise<import('./types').ModerationReport> { return {} as any; }
+    async dismissModerationReport(_id: string): Promise<import('./types').ModerationReport> { return {} as any; }
+    async openAdminChat(_reportId: string): Promise<import('./types').ModerationReport> { return {} as any; }
 }

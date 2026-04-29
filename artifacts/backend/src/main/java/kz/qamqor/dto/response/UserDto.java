@@ -16,6 +16,7 @@ public record UserDto(
     String role,
     String birthDate,
     String city,
+    String aboutMe,
     List<String> categories,
     Double rating,
     Instant createdAt
@@ -34,6 +35,7 @@ public record UserDto(
             user.getRole().name().toLowerCase(),
             user.getBirthDate(),
             user.getCity(),
+            user.getAboutMe(),
             cats,
             rating,
             user.getCreatedAt()

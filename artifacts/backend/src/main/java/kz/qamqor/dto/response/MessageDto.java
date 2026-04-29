@@ -9,7 +9,8 @@ public record MessageDto(
     String chatId,
     String senderId,
     String text,
-    Instant timestamp
+    Instant timestamp,
+    boolean flagged
 ) {
     public static MessageDto from(Message m) {
         return new MessageDto(
@@ -17,7 +18,8 @@ public record MessageDto(
             m.getChat().getId(),
             m.getSender().getId(),
             m.getText(),
-            m.getCreatedAt()
+            m.getCreatedAt(),
+            m.isFlagged()
         );
     }
 }

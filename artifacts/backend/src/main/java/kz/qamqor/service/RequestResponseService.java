@@ -88,6 +88,7 @@ public class RequestResponseService {
         String volunteerId = response.getVolunteer().getId();
         String elderlyName = buildName(elderly);
 
+        notificationService.setStatusByResponseId(responseId, "NEW_RESPONSE", "ACCEPTED");
         notificationService.save(volunteerId, "RESPONSE_ACCEPTED", request.getId(), request.getTitle(), elderlyName, null);
         messagingTemplate.convertAndSend(
             "/topic/notifications/" + volunteerId,
@@ -116,6 +117,7 @@ public class RequestResponseService {
         String volunteerId = response.getVolunteer().getId();
         String elderlyName = buildName(elderly);
 
+        notificationService.setStatusByResponseId(responseId, "NEW_RESPONSE", "DECLINED");
         notificationService.save(volunteerId, "RESPONSE_DECLINED",
             response.getRequest().getId(), response.getRequest().getTitle(), elderlyName, null);
         messagingTemplate.convertAndSend(

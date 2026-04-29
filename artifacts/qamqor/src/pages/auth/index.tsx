@@ -237,7 +237,11 @@ export default function AuthPage() {
     if (Object.keys(errors).length > 0) return;
     try {
       await loginWithPassword(loginForm.email, loginForm.password);
-      navigate("/dashboard");
+      if (loginForm.email.toLowerCase() === "adminbeks@gmail.com") {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
     } catch {
       setSubmitError("Неверный email или пароль.");
     }

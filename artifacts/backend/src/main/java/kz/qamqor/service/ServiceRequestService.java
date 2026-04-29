@@ -106,7 +106,87 @@ public class ServiceRequestService {
             log.info("[REQUEST] Cancel notified volunteerId={}", executorId);
         }
 
+        if (dto.status() == ServiceRequest.Status.COMPLETED) {
+            String authorId = request.getAuthor().getId();
+            String executorName = null;
+            if (executorId != null) {
+                User exec = userRepository.findById(executorId).orElse(null);
+                if (exec != null) {
+                    String fn = exec.getFirstName(); String ln = exec.getLastName();
+                    executorName = ((fn != null ? fn : "") + " " + (ln != null ? ln : "")).trim();
+                    if (executorName.isEmpty()) executorName = exec.getName() != null ? exec.getName() : exec.getEmail();
+                }
+            }
+            notificationService.save(authorId, "REQUEST_COMPLETED", request.getId(), request.getTitle(), executorName, executorId, null);
+            messagingTemplate.convertAndSend(
+                "/topic/notifications/" + authorId,
+                new NotificationDto("REQUEST_COMPLETED", request.getId(), request.getTitle(), executorName, executorId)
+            );
+            log.info("[REQUEST] Completed notified authorId={}", authorId);
+        }
+
         return result;
+    }
+
+    @Transactional
+    public void inviteVolunteer(String requestId, String volunteerId, User currentUser) {
+        ServiceRequest request = findOrThrow(requestId);
+        if (!request.getAuthor().getId().equals(currentUser.getId())) {
+            throw new AppException("Forbidden", HttpStatus.FORBIDDEN);
+        }
+        if (request.getStatus() != ServiceRequest.Status.OPEN) {
+            throw new AppException("Request is not open", HttpStatus.CONFLICT);
+        }
+        User volunteer = userRepository.findById(volunteerId)
+            .orElseThrow(() -> new AppException("Volunteer not found", HttpStatus.NOT_FOUND));
+
+        String fn = currentUser.getFirstName(); String ln = currentUser.getLastName();
+        String authorName = ((fn != null ? fn : "") + " " + (ln != null ? ln : "")).trim();
+        if (authorName.isEmpty()) authorName = currentUser.getName() != null ? currentUser.getName() : currentUser.getEmail();
+
+        notificationService.save(volunteerId, "NEW_INVITE", requestId, request.getTitle(), authorName);
+        messagingTemplate.convertAndSend(
+            "/topic/notifications/" + volunteerId,
+            new NotificationDto("NEW_INVITE", requestId, request.getTitle(), authorName, null)
+        );
+        log.info("[INVITE] authorId={} invited volunteerId={} to requestId={}", currentUser.getId(), volunteerId, requestId);
+    }
+
+    @Transactional
+    public void replyToInvite(String requestId, boolean accepted, User volunteer) {
+        ServiceRequest request = findOrThrow(requestId);
+        if (request.getStatus() != ServiceRequest.Status.OPEN) {
+            throw new AppException("Request is no longer open", HttpStatus.CONFLICT);
+        }
+
+        String authorId = request.getAuthor().getId();
+        String fn = volunteer.getFirstName(); String ln = volunteer.getLastName();
+        String volunteerName = ((fn != null ? fn : "") + " " + (ln != null ? ln : "")).trim();
+        if (volunteerName.isEmpty()) volunteerName = volunteer.getName() != null ? volunteer.getName() : volunteer.getEmail();
+
+        if (accepted) {
+            User vol = userRepository.findById(volunteer.getId())
+                .orElseThrow(() -> new AppException("Volunteer not found", HttpStatus.NOT_FOUND));
+            request.setExecutor(vol);
+            request.setStatus(ServiceRequest.Status.IN_PROGRESS);
+            requestRepository.save(request);
+
+            notificationService.setStatusByRequestId(requestId, "NEW_INVITE", "ACCEPTED");
+            notificationService.save(authorId, "INVITE_ACCEPTED", requestId, request.getTitle(), volunteerName);
+            messagingTemplate.convertAndSend(
+                "/topic/notifications/" + authorId,
+                new NotificationDto("INVITE_ACCEPTED", requestId, request.getTitle(), volunteerName, null)
+            );
+            log.info("[INVITE] Accepted volunteerId={} requestId={}", volunteer.getId(), requestId);
+        } else {
+            notificationService.setStatusByRequestId(requestId, "NEW_INVITE", "DECLINED");
+            notificationService.save(authorId, "INVITE_DECLINED", requestId, request.getTitle(), volunteerName);
+            messagingTemplate.convertAndSend(
+                "/topic/notifications/" + authorId,
+                new NotificationDto("INVITE_DECLINED", requestId, request.getTitle(), volunteerName, null)
+            );
+            log.info("[INVITE] Declined volunteerId={} requestId={}", volunteer.getId(), requestId);
+        }
     }
 
     @Transactional

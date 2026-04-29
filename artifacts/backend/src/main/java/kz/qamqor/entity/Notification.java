@@ -24,7 +24,11 @@ public class Notification {
     private String requestId;
     private String requestTitle;
     private String actorName;
+    private String actorId;
     private String responseId;
+
+    /** Финальный статус действия: ACCEPTED, DECLINED, REVIEWED — null пока не обработано */
+    private String status;
 
     @CreationTimestamp
     private Instant createdAt;

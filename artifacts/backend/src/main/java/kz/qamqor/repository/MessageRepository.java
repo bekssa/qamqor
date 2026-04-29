@@ -9,6 +9,7 @@ import java.util.List;
 
 public interface MessageRepository extends JpaRepository<Message, Long> {
     List<Message> findAllByChatIdOrderByCreatedAtAsc(String chatId);
+    java.util.Optional<Message> findTopByChatIdOrderByCreatedAtDesc(String chatId);
 
     @Modifying
     @Query("DELETE FROM Message m WHERE m.sender.id = :senderId")

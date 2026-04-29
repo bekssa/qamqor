@@ -5,5 +5,6 @@ public record UpdateProfileRequest(
     String lastName,
     String phone,
     String city,
-    String role
+    String role,
+    String aboutMe
 ) {}

@@ -1,11 +1,14 @@
 package kz.qamqor.config;
 
 import kz.qamqor.entity.Category;
+import kz.qamqor.entity.User;
 import kz.qamqor.repository.CategoryRepository;
+import kz.qamqor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -16,10 +19,13 @@ import java.util.List;
 public class DataSeeder implements ApplicationRunner {
 
     private final CategoryRepository categoryRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public void run(ApplicationArguments args) {
         seedCategories();
+        seedAdmin();
     }
 
     private void seedCategories() {
@@ -35,6 +41,23 @@ public class DataSeeder implements ApplicationRunner {
                 categoryRepository.save(c);
                 log.info("[SEED] Category saved: {}", c.getKey());
             }
+        }
+    }
+
+    private void seedAdmin() {
+        String adminEmail = "adminbeks@gmail.com";
+        if (!userRepository.existsByEmail(adminEmail)) {
+            User admin = User.builder()
+                .email(adminEmail)
+                .passwordHash(passwordEncoder.encode("admin_2026"))
+                .role(User.Role.ADMIN)
+                .name("Администратор")
+                .firstName("Администратор")
+                .lastName("")
+                .verified(true)
+                .build();
+            userRepository.save(admin);
+            log.info("[SEED] Admin user created: {}", adminEmail);
         }
     }
 }

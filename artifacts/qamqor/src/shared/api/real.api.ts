@@ -1,5 +1,5 @@
 import { IKamkorApi } from './IKamkorApi';
-import { User, ServiceRequest, Review, Chat, Message } from './types';
+import { User, ServiceRequest, Review, Chat, Message, UserDocument, ModerationReport } from './types';
 
 const TOKEN_KEY = 'qamqor-token';
 
@@ -67,7 +67,7 @@ export class RealKamkorApi implements IKamkorApi {
 
     async updateUserProfile(data: {
         firstName?: string; lastName?: string; phone?: string;
-        city?: string; role?: string;
+        city?: string; role?: string; aboutMe?: string;
     }) {
         const response = await this.fetchApi<{
             id: string; email: string; name: string; firstName?: string; lastName?: string;
@@ -120,7 +120,7 @@ export class RealKamkorApi implements IKamkorApi {
     private mapUser(r: {
         id: string; email: string; name: string; firstName?: string; lastName?: string;
         phone: string; avatarUrl: string; role: string; rating: number;
-        birthDate?: string; city?: string; categories?: string[];
+        birthDate?: string; city?: string; categories?: string[]; aboutMe?: string;
     }) {
         return {
             id: r.id,
@@ -135,6 +135,7 @@ export class RealKamkorApi implements IKamkorApi {
             birthDate: r.birthDate,
             city: r.city,
             categories: r.categories ?? [],
+            aboutMe: r.aboutMe,
         };
     }
 
@@ -266,7 +267,15 @@ export class RealKamkorApi implements IKamkorApi {
     }
 
     async getNotifications() {
-        return this.fetchApi<{ id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; responseId: string | null; createdAt: string }[]>('/notifications');
+        return this.fetchApi<{ id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; actorId: string | null; responseId: string | null; status: string | null; createdAt: string }[]>('/notifications');
+    }
+
+    async inviteHelper(requestId: string, volunteerId: string): Promise<void> {
+        await this.fetchApi<void>(`/requests/${requestId}/invite/${volunteerId}`, { method: 'POST' });
+    }
+
+    async replyToInvite(requestId: string, accepted: boolean): Promise<void> {
+        await this.fetchApi<void>(`/requests/${requestId}/invite/reply?accepted=${accepted}`, { method: 'POST' });
     }
 
     // ── Users ────────────────────────────────────────────────────────────────
@@ -285,7 +294,7 @@ export class RealKamkorApi implements IKamkorApi {
         return this.fetchApi<Review[]>(`/users/${userId}/reviews`);
     }
 
-    async submitReview(data: Omit<Review, 'id' | 'createdAt'>): Promise<Review> {
+    async submitReview(data: Omit<Review, 'id' | 'createdAt'> & { requestId?: string }): Promise<Review> {
         return this.fetchApi<Review>('/reviews', {
             method: 'POST',
             body: JSON.stringify(data),
@@ -311,5 +320,57 @@ export class RealKamkorApi implements IKamkorApi {
 
     async getMessages(chatId: string): Promise<Message[]> {
         return this.fetchApi<Message[]>(`/chats/${chatId}/messages`);
+    }
+
+    async uploadDocument(documentType: string, file: File): Promise<UserDocument> {
+        const token = this.getToken();
+        const form = new FormData();
+        form.append('documentType', documentType);
+        form.append('file', file);
+        const response = await fetch(`${this.baseUrl}/documents/upload`, {
+            method: 'POST',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: form,
+        });
+        if (!response.ok) {
+            const body = await response.text().catch(() => '');
+            throw new Error(`API Error ${response.status}: ${body}`);
+        }
+        return response.json();
+    }
+
+    async getMyDocuments(): Promise<UserDocument[]> {
+        return this.fetchApi<UserDocument[]>('/documents/my');
+    }
+
+    async getAdminPendingDocuments(): Promise<UserDocument[]> {
+        return this.fetchApi<UserDocument[]>('/admin/documents/pending');
+    }
+
+    async approveDocument(id: string): Promise<UserDocument> {
+        return this.fetchApi<UserDocument>(`/admin/documents/${id}/approve`, { method: 'POST' });
+    }
+
+    async rejectDocument(id: string, reason: string): Promise<UserDocument> {
+        return this.fetchApi<UserDocument>(`/admin/documents/${id}/reject`, {
+            method: 'POST',
+            body: JSON.stringify({ reason }),
+        });
+    }
+
+    async getModerationReports(): Promise<ModerationReport[]> {
+        return this.fetchApi<ModerationReport[]>('/admin/moderation/reports');
+    }
+
+    async reviewModerationReport(id: string): Promise<ModerationReport> {
+        return this.fetchApi<ModerationReport>(`/admin/moderation/reports/${id}/review`, { method: 'POST' });
+    }
+
+    async dismissModerationReport(id: string): Promise<ModerationReport> {
+        return this.fetchApi<ModerationReport>(`/admin/moderation/reports/${id}/dismiss`, { method: 'POST' });
+    }
+
+    async openAdminChat(reportId: string): Promise<ModerationReport> {
+        return this.fetchApi<ModerationReport>(`/admin/moderation/reports/${reportId}/open-chat`, { method: 'POST' });
     }
 }

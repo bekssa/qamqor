@@ -1,4 +1,4 @@
-import { User, ServiceRequest, Review, Chat, Message, ResponseStatus } from './types';
+import { User, ServiceRequest, Review, Chat, Message, ResponseStatus, UserDocument, ModerationReport } from './types';
 
 export interface IKamkorApi {
     // Requests API
@@ -13,7 +13,7 @@ export interface IKamkorApi {
     getMyResponses(): Promise<{ requestId: string; status: ResponseStatus }[]>;
     acceptResponse(responseId: string): Promise<void>;
     declineResponse(responseId: string): Promise<void>;
-    getNotifications(): Promise<{ id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; responseId: string | null; createdAt: string }[]>;
+    getNotifications(): Promise<{ id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; actorId: string | null; responseId: string | null; status: string | null; createdAt: string }[]>;
 
     // Users / Volunteers API
     getVolunteers(): Promise<User[]>;
@@ -27,6 +27,7 @@ export interface IKamkorApi {
         phone?: string;
         city?: string;
         role?: string;
+        aboutMe?: string;
     }): Promise<{ user: import('./types').User & { firstName?: string; lastName?: string; birthDate?: string; city?: string } }>;
     uploadAvatar(file: File): Promise<{ user: import('./types').User & { firstName?: string; lastName?: string; birthDate?: string; city?: string; categories?: string[] } }>;
     deleteAvatar(): Promise<{ user: import('./types').User & { firstName?: string; lastName?: string; birthDate?: string; city?: string; categories?: string[] } }>;
@@ -47,13 +48,30 @@ export interface IKamkorApi {
     loginWithPassword(email: string, password: string): Promise<{ user: User; token: string }>;
     updatePassword(password: string): Promise<void>;
 
+    // Invite API
+    inviteHelper(requestId: string, volunteerId: string): Promise<void>;
+    replyToInvite(requestId: string, accepted: boolean): Promise<void>;
+
     // Reviews API
     getReviewsByUserId(userId: string): Promise<Review[]>;
-    submitReview(data: Omit<Review, 'id' | 'createdAt'>): Promise<Review>;
+    submitReview(data: Omit<Review, 'id' | 'createdAt'> & { requestId?: string }): Promise<Review>;
 
     // Chat API
     getChats(): Promise<Chat[]>;
     openChat(otherUserId: string): Promise<Chat>;
     getMessages(chatId: string): Promise<Message[]>;
     getWsUrl(): string;
+
+    // Documents API
+    uploadDocument(documentType: string, file: File): Promise<UserDocument>;
+    getMyDocuments(): Promise<UserDocument[]>;
+    getAdminPendingDocuments(): Promise<UserDocument[]>;
+    approveDocument(id: string): Promise<UserDocument>;
+    rejectDocument(id: string, reason: string): Promise<UserDocument>;
+
+    // Moderation API
+    getModerationReports(): Promise<ModerationReport[]>;
+    reviewModerationReport(id: string): Promise<ModerationReport>;
+    dismissModerationReport(id: string): Promise<ModerationReport>;
+    openAdminChat(reportId: string): Promise<ModerationReport>;
 }

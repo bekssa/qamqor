@@ -24,6 +24,7 @@ public class ReviewService {
 
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public List<ReviewDto> getByTargetId(String targetId) {
         List<ReviewDto> list = reviewRepository.findAllByTargetId(targetId).stream()
@@ -49,6 +50,9 @@ public class ReviewService {
 
         ReviewDto result = ReviewDto.from(reviewRepository.save(review));
         log.info("[REVIEW] Created id={} author={} target={} rating={}", result.id(), dto.authorId(), dto.targetId(), dto.rating());
+        if (dto.requestId() != null && !dto.requestId().isBlank()) {
+            notificationService.setStatusByRequestId(dto.requestId(), "REQUEST_COMPLETED", "REVIEWED");
+        }
         return result;
     }
 

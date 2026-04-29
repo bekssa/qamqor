@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react';
 import { Button } from "@shared/ui/button";
 import { motion } from "framer-motion";
 import { ClipboardEdit, Search, HeartHandshake, MessageSquare } from "lucide-react";
@@ -57,9 +57,6 @@ export default function HowItWorks() {
               </div>
               <h3 className="text-xl font-semibold mb-3">{t(step.titleKey)}</h3>
               <p className="text-muted-foreground mb-6 flex-grow">{t(step.descKey)}</p>
-              <Button variant="link" className="text-primary p-0 h-auto font-medium">
-                {t("howItWorks.details")}
-              </Button>
             </motion.div>
           ))}
         </div>

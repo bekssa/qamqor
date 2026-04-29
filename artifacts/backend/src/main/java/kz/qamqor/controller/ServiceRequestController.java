@@ -107,4 +107,26 @@ public class ServiceRequestController {
     ) {
         return ResponseEntity.ok(service.updateStatus(id, dto));
     }
+
+    @Operation(summary = "Пригласить волонтёра на заявку (только автор)")
+    @PostMapping("/{id}/invite/{volunteerId}")
+    public ResponseEntity<Void> inviteVolunteer(
+        @PathVariable String id,
+        @PathVariable String volunteerId,
+        @AuthenticationPrincipal kz.qamqor.entity.User currentUser
+    ) {
+        service.inviteVolunteer(id, volunteerId, currentUser);
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "Ответить на приглашение (волонтёр)")
+    @PostMapping("/{id}/invite/reply")
+    public ResponseEntity<Void> replyToInvite(
+        @PathVariable String id,
+        @RequestParam boolean accepted,
+        @AuthenticationPrincipal kz.qamqor.entity.User currentUser
+    ) {
+        service.replyToInvite(id, accepted, currentUser);
+        return ResponseEntity.ok().build();
+    }
 }

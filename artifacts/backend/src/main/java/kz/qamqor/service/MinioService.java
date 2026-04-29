@@ -50,6 +50,28 @@ public class MinioService {
         }
     }
 
+    public String uploadDocument(String userId, String documentType, MultipartFile file) {
+        try {
+            String objectName = "documents/" + userId + "/" + documentType + "_" + UUID.randomUUID() + ".pdf";
+
+            try (InputStream stream = file.getInputStream()) {
+                minioClient.putObject(PutObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(objectName)
+                    .stream(stream, file.getSize(), -1)
+                    .contentType("application/pdf")
+                    .build());
+            }
+
+            String url = publicUrl.replaceAll("/+$", "") + "/" + bucket + "/" + objectName;
+            log.info("[MINIO] Uploaded document for userId={} type={} url={}", userId, documentType, url);
+            return url;
+        } catch (Exception e) {
+            log.error("[MINIO] Document upload failed for userId={} type={}: {}", userId, documentType, e.getMessage());
+            throw new RuntimeException("Failed to upload document", e);
+        }
+    }
+
     public void ensurePublicBucketPolicy() {
         try {
             String policy = """

@@ -98,6 +98,12 @@ public class UserService {
         if (req.role()  != null) {
             user.setRole("offer-help".equals(req.role()) ? User.Role.VOLUNTEER : User.Role.ELDERLY);
         }
+        if (req.aboutMe() != null) {
+            String trimmed = req.aboutMe().trim();
+            long wordCount = trimmed.isEmpty() ? 0 : trimmed.split("\\s+").length;
+            if (wordCount > 100) throw new kz.qamqor.exception.AppException("aboutMe must not exceed 100 words", org.springframework.http.HttpStatus.BAD_REQUEST);
+            user.setAboutMe(trimmed.isEmpty() ? null : trimmed);
+        }
 
         userRepository.save(user);
         log.info("[USER] updateMe userId={} updated", user.getId());

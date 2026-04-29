@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="eu">
+<head>
+    <meta charset="UTF-8">
+    <title>Код подтверждения</title>
+    <style>
+        .container {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .code-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px;
+            text-align: center;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+        .code {
+            font-size: 36px;
+            font-weight: bold;
+            letter-spacing: 8px;
+            color: white;
+            background: rgba(255,255,255,0.2);
+            display: inline-block;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Подтверждение email — Qamqor</h2>
+
+    <div class="code-box">
+        <div class="code" th:text="${code}">123456</div>
+    </div>
+
+    <p>Код действителен <strong th:text="${expirationMinutes}">5</strong> минут.</p>
+
+    <hr>
+
+    <small style="color: #666;">
+        Если вы не запрашивали этот код — просто проигнорируйте письмо.
+    </small>
+</div>
+</body>
+</html>
