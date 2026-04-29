@@ -1,8 +1,3 @@
-import React, { useState } from "react";
-import { useLocation } from "wouter";
-import { ArrowLeft } from "lucide-react";
-import { useLanguage } from "@features/language/model/context";
-import { useAuth } from "@features/auth/model/context";
 
 import logoImg from "@/assets/services/logo.png";
 

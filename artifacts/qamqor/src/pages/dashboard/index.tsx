@@ -180,7 +180,7 @@ function Avatar({ conv, size = 44 }: { conv: Conversation; size?: number }) {
   }
   if (conv.avatar === "qamqor") {
     return (
-      <img src={imgQamqor} alt="Qamqor" className="rounded-full object-cover shrink-0"
+      <img src={logoImg} alt="Qamqor" className="rounded-full object-cover shrink-0"
         style={{ width: size, height: size }} />
     );
   }

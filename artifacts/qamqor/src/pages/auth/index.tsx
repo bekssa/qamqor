@@ -1,13 +1,3 @@
-import React, { useState, useRef, useEffect } from "react";
-import { useLocation } from "wouter";
-import { ArrowLeft, Eye, EyeOff, ChevronDown, CalendarIcon } from "lucide-react";
-import { useLanguage } from "@features/language/model/context";
-import { useAuth } from "@features/auth/model/context";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 
 const KAZAKHSTAN_CITIES = [
   "Алматы", "Астана", "Шымкент", "Караганда", "Актобе",
