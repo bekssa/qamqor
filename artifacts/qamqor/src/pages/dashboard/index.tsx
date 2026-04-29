@@ -3538,7 +3538,11 @@ function DocumentsView() {
     api.getMyDocuments().then((list: any[]) => setDocs(list)).catch(() => {});
   }, []);
 
-  const getDoc = (type: DocType) => docs.find(d => d.documentType === type) ?? null;
+  const getDoc = (type: DocType) => {
+    const matches = docs.filter(d => d.documentType === type);
+    if (matches.length === 0) return null;
+    return matches.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())[0];
+  };
 
   const handleUploadClick = (type: DocType) => {
     setError(null);
@@ -3666,15 +3670,25 @@ function useDocAccess() {
   useEffect(() => {
     api.getMyDocuments().then((list: any[]) => setDocs(list)).catch(() => {});
   }, []);
-  const approvedTypes = new Set(docs.filter(d => d.status === "APPROVED").map(d => d.documentType));
+
+  // Deduplicate: keep only the latest doc per type
+  const latestByType = DOC_TYPES.reduce<Record<string, UserDoc>>((acc, dt) => {
+    const matches = docs.filter(d => d.documentType === dt.key);
+    if (matches.length > 0) {
+      acc[dt.key] = matches.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())[0];
+    }
+    return acc;
+  }, {});
+
+  const approvedTypes = new Set(Object.values(latestByType).filter(d => d.status === "APPROVED").map(d => d.documentType));
   const allApproved = DOC_TYPES.every(dt => approvedTypes.has(dt.key as DocType));
   const missingDocs = DOC_TYPES.filter(dt => {
-    const d = docs.find(doc => doc.documentType === dt.key);
+    const d = latestByType[dt.key];
     if (!d) return true;
     if (d.status === "REJECTED") return true;
     return false;
   });
-  const pendingDocs = DOC_TYPES.filter(dt => docs.find(doc => doc.documentType === dt.key)?.status === "PENDING");
+  const pendingDocs = DOC_TYPES.filter(dt => latestByType[dt.key]?.status === "PENDING");
   return { allApproved, missingDocs, pendingDocs, docs };
 }
 
