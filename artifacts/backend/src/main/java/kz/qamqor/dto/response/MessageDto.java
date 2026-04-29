@@ -19,7 +19,7 @@ public record MessageDto(
             m.getSender().getId(),
             m.getText(),
             m.getCreatedAt(),
-            m.isFlagged()
+            Boolean.TRUE.equals(m.getFlagged())
         );
     }
 }
