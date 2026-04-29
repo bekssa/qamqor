@@ -1,0 +1,602 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_Qamqor"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+
+  <!-- =================== COLLABORATION =================== -->
+  <bpmn:collaboration id="Collaboration_Qamqor">
+    <bpmn:participant id="Pool_User" name="User / Client" processRef="Process_User"/>
+    <bpmn:participant id="Pool_FE"   name="Frontend (React + FSD)" processRef="Process_FE"/>
+    <bpmn:participant id="Pool_BE"   name="Backend API (Kamkor API)" processRef="Process_BE"/>
+    <bpmn:participant id="Pool_Ext"  name="External Services" processRef="Process_Ext"/>
+    <bpmn:participant id="Pool_Legend" name="Legend" processRef="Process_Legend"/>
+
+    <!-- ============= MESSAGE FLOWS BETWEEN POOLS ============= -->
+    <bpmn:messageFlow id="MF_FormSubmit"  sourceRef="Task_EnterCreds"     targetRef="Task_ValidateForm"/>
+    <bpmn:messageFlow id="MF_OtpRequest"  sourceRef="Task_ValidateForm"   targetRef="Task_SendOtp"/>
+    <bpmn:messageFlow id="MF_OtpToProvider" sourceRef="Task_SendOtp"      targetRef="Task_EmailSMS"/>
+    <bpmn:messageFlow id="MF_OtpDeliver"  sourceRef="Task_EmailSMS"       targetRef="Catch_OTP"/>
+    <bpmn:messageFlow id="MF_OtpEnter"    sourceRef="Catch_OTP"           targetRef="Task_VerifyOtp"/>
+    <bpmn:messageFlow id="MF_JwtStore"    sourceRef="Task_LoadProfile"    targetRef="Task_JWTStore"/>
+    <bpmn:messageFlow id="MF_TokenToFE"   sourceRef="Task_LoadProfile"    targetRef="Task_PersistToken"/>
+    <bpmn:messageFlow id="MF_DashRender"  sourceRef="Task_RenderDashboard" targetRef="Gateway_Role"/>
+    <bpmn:messageFlow id="MF_CreateReq"   sourceRef="Task_CreateRequest"  targetRef="Task_PersistRequests"/>
+    <bpmn:messageFlow id="MF_BrowseReq"   sourceRef="Task_BrowseRequest"  targetRef="Task_PersistRequests"/>
+    <bpmn:messageFlow id="MF_StoreFile"   sourceRef="Task_PersistRequests" targetRef="Task_S3Storage"/>
+    <bpmn:messageFlow id="MF_Match"       sourceRef="Task_MatchUsers"     targetRef="Task_PushNotif"/>
+    <bpmn:messageFlow id="MF_Notify"      sourceRef="Task_PushNotif"      targetRef="Gateway_Join"/>
+    <bpmn:messageFlow id="MF_Chat_Up"     sourceRef="Task_Chat"           targetRef="Task_StreamMessages"/>
+    <bpmn:messageFlow id="MF_Chat_WS"     sourceRef="Task_StreamMessages" targetRef="Task_WSServer"/>
+    <bpmn:messageFlow id="MF_ReviewSubmit" sourceRef="Task_DoneReview"    targetRef="Task_PostReview"/>
+    <bpmn:messageFlow id="MF_ReviewSave"  sourceRef="Task_PostReview"     targetRef="Task_SaveReview"/>
+    <bpmn:messageFlow id="MF_ReviewDB"    sourceRef="Task_SaveReview"     targetRef="Task_ReviewsDB"/>
+  </bpmn:collaboration>
+
+  <!-- =================== USER PROCESS =================== -->
+  <bpmn:process id="Process_User" isExecutable="false">
+    <bpmn:startEvent id="Start_User" name="Open Qamqor">
+      <bpmn:outgoing>SF_U1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_ViewLanding" name="View landing page">
+      <bpmn:incoming>SF_U1</bpmn:incoming><bpmn:outgoing>SF_U2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_ClickAuth" name="Click Login / Register">
+      <bpmn:incoming>SF_U2</bpmn:incoming><bpmn:outgoing>SF_U3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_EnterCreds" name="Enter credentials">
+      <bpmn:incoming>SF_U3</bpmn:incoming><bpmn:incoming>SF_U_OTP_NO</bpmn:incoming>
+      <bpmn:outgoing>SF_U4</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:intermediateCatchEvent id="Catch_OTP" name="Receive OTP">
+      <bpmn:incoming>SF_U4</bpmn:incoming><bpmn:outgoing>SF_U5</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_Otp"/>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:exclusiveGateway id="Gateway_OTPValid" name="OTP valid?">
+      <bpmn:incoming>SF_U5</bpmn:incoming>
+      <bpmn:outgoing>SF_U_OTP_YES</bpmn:outgoing>
+      <bpmn:outgoing>SF_U_OTP_NO</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Gateway_Role" name="Role">
+      <bpmn:incoming>SF_U_OTP_YES</bpmn:incoming>
+      <bpmn:outgoing>SF_U_ELDERLY</bpmn:outgoing>
+      <bpmn:outgoing>SF_U_VOLUNTEER</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_CreateRequest" name="Create service request">
+      <bpmn:incoming>SF_U_ELDERLY</bpmn:incoming><bpmn:outgoing>SF_U_E_TO_J</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_BrowseRequest" name="Browse / pick request">
+      <bpmn:incoming>SF_U_VOLUNTEER</bpmn:incoming><bpmn:outgoing>SF_U_V_TO_J</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_Join" name="Match &#38; open chat">
+      <bpmn:incoming>SF_U_E_TO_J</bpmn:incoming>
+      <bpmn:incoming>SF_U_V_TO_J</bpmn:incoming>
+      <bpmn:outgoing>SF_U6</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_Chat" name="Chat &#38; coordinate">
+      <bpmn:incoming>SF_U6</bpmn:incoming><bpmn:outgoing>SF_U7</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_DoneReview" name="Mark done + leave review">
+      <bpmn:incoming>SF_U7</bpmn:incoming><bpmn:outgoing>SF_U8</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="End_User" name="Service completed">
+      <bpmn:incoming>SF_U8</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="SF_U1" sourceRef="Start_User"        targetRef="Task_ViewLanding"/>
+    <bpmn:sequenceFlow id="SF_U2" sourceRef="Task_ViewLanding"  targetRef="Task_ClickAuth"/>
+    <bpmn:sequenceFlow id="SF_U3" sourceRef="Task_ClickAuth"    targetRef="Task_EnterCreds"/>
+    <bpmn:sequenceFlow id="SF_U4" sourceRef="Task_EnterCreds"   targetRef="Catch_OTP"/>
+    <bpmn:sequenceFlow id="SF_U5" sourceRef="Catch_OTP"         targetRef="Gateway_OTPValid"/>
+    <bpmn:sequenceFlow id="SF_U_OTP_YES" name="yes" sourceRef="Gateway_OTPValid" targetRef="Gateway_Role"/>
+    <bpmn:sequenceFlow id="SF_U_OTP_NO"  name="no"  sourceRef="Gateway_OTPValid" targetRef="Task_EnterCreds"/>
+    <bpmn:sequenceFlow id="SF_U_ELDERLY"   name="elderly"   sourceRef="Gateway_Role" targetRef="Task_CreateRequest"/>
+    <bpmn:sequenceFlow id="SF_U_VOLUNTEER" name="volunteer" sourceRef="Gateway_Role" targetRef="Task_BrowseRequest"/>
+    <bpmn:sequenceFlow id="SF_U_E_TO_J" sourceRef="Task_CreateRequest" targetRef="Gateway_Join"/>
+    <bpmn:sequenceFlow id="SF_U_V_TO_J" sourceRef="Task_BrowseRequest" targetRef="Gateway_Join"/>
+    <bpmn:sequenceFlow id="SF_U6" sourceRef="Gateway_Join"   targetRef="Task_Chat"/>
+    <bpmn:sequenceFlow id="SF_U7" sourceRef="Task_Chat"      targetRef="Task_DoneReview"/>
+    <bpmn:sequenceFlow id="SF_U8" sourceRef="Task_DoneReview" targetRef="End_User"/>
+  </bpmn:process>
+
+  <!-- =================== FRONTEND PROCESS =================== -->
+  <bpmn:process id="Process_FE" isExecutable="false">
+    <bpmn:startEvent id="Start_FE" name="App mount">
+      <bpmn:outgoing>SF_F1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_RenderHome" name="Render HomePage">
+      <bpmn:incoming>SF_F1</bpmn:incoming><bpmn:outgoing>SF_F2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_RenderAuth" name="Render AuthPage (wouter /auth)">
+      <bpmn:incoming>SF_F2</bpmn:incoming>
+      <bpmn:incoming>SF_F_GUARD_NO</bpmn:incoming>
+      <bpmn:outgoing>SF_F3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_ValidateForm" name="Validate form (react-hook-form)">
+      <bpmn:incoming>SF_F3</bpmn:incoming><bpmn:outgoing>SF_F4</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_PersistToken" name="Persist token &#8594; localStorage">
+      <bpmn:incoming>SF_F4</bpmn:incoming><bpmn:outgoing>SF_F5</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_AuthGuard" name="Auth guard">
+      <bpmn:incoming>SF_F5</bpmn:incoming>
+      <bpmn:outgoing>SF_F_GUARD_OK</bpmn:outgoing>
+      <bpmn:outgoing>SF_F_GUARD_NO</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_RenderDashboard" name="Render Dashboard">
+      <bpmn:incoming>SF_F_GUARD_OK</bpmn:incoming><bpmn:outgoing>SF_F6</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_PushNotif" name="Push notif &#38; update list">
+      <bpmn:incoming>SF_F6</bpmn:incoming><bpmn:outgoing>SF_F7</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_PostReview" name="POST review + refresh UI">
+      <bpmn:incoming>SF_F7</bpmn:incoming><bpmn:outgoing>SF_F8</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="End_FE" name="UI ready">
+      <bpmn:incoming>SF_F8</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="SF_F1" sourceRef="Start_FE"        targetRef="Task_RenderHome"/>
+    <bpmn:sequenceFlow id="SF_F2" sourceRef="Task_RenderHome" targetRef="Task_RenderAuth"/>
+    <bpmn:sequenceFlow id="SF_F3" sourceRef="Task_RenderAuth" targetRef="Task_ValidateForm"/>
+    <bpmn:sequenceFlow id="SF_F4" sourceRef="Task_ValidateForm" targetRef="Task_PersistToken"/>
+    <bpmn:sequenceFlow id="SF_F5" sourceRef="Task_PersistToken" targetRef="Gateway_AuthGuard"/>
+    <bpmn:sequenceFlow id="SF_F_GUARD_OK" name="ok"        sourceRef="Gateway_AuthGuard" targetRef="Task_RenderDashboard"/>
+    <bpmn:sequenceFlow id="SF_F_GUARD_NO" name="no token"  sourceRef="Gateway_AuthGuard" targetRef="Task_RenderAuth"/>
+    <bpmn:sequenceFlow id="SF_F6" sourceRef="Task_RenderDashboard" targetRef="Task_PushNotif"/>
+    <bpmn:sequenceFlow id="SF_F7" sourceRef="Task_PushNotif"       targetRef="Task_PostReview"/>
+    <bpmn:sequenceFlow id="SF_F8" sourceRef="Task_PostReview"      targetRef="End_FE"/>
+  </bpmn:process>
+
+  <!-- =================== BACKEND PROCESS =================== -->
+  <bpmn:process id="Process_BE" isExecutable="false">
+    <bpmn:startEvent id="Start_BE" name="API ready">
+      <bpmn:outgoing>SF_B1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_SendOtp" name="POST /auth/send-otp">
+      <bpmn:incoming>SF_B1</bpmn:incoming><bpmn:outgoing>SF_B2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_VerifyOtp" name="POST /auth/verify-otp &#8594; JWT">
+      <bpmn:incoming>SF_B2</bpmn:incoming><bpmn:outgoing>SF_B3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_LoadProfile" name="GET /me · load profile">
+      <bpmn:incoming>SF_B3</bpmn:incoming><bpmn:outgoing>SF_B4</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_PersistRequests" name="/requests · /available · respond">
+      <bpmn:incoming>SF_B4</bpmn:incoming><bpmn:outgoing>SF_B5</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_MatchUsers" name="acceptResponse · create chat">
+      <bpmn:incoming>SF_B5</bpmn:incoming><bpmn:outgoing>SF_B6</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_StreamMessages" name="GET /messages · stream WS">
+      <bpmn:incoming>SF_B6</bpmn:incoming><bpmn:outgoing>SF_B7</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_SaveReview" name="Save Review · status=completed">
+      <bpmn:incoming>SF_B7</bpmn:incoming><bpmn:outgoing>SF_B8</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="End_BE" name="Order fulfilled">
+      <bpmn:incoming>SF_B8</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="SF_B1" sourceRef="Start_BE"           targetRef="Task_SendOtp"/>
+    <bpmn:sequenceFlow id="SF_B2" sourceRef="Task_SendOtp"       targetRef="Task_VerifyOtp"/>
+    <bpmn:sequenceFlow id="SF_B3" sourceRef="Task_VerifyOtp"     targetRef="Task_LoadProfile"/>
+    <bpmn:sequenceFlow id="SF_B4" sourceRef="Task_LoadProfile"   targetRef="Task_PersistRequests"/>
+    <bpmn:sequenceFlow id="SF_B5" sourceRef="Task_PersistRequests" targetRef="Task_MatchUsers"/>
+    <bpmn:sequenceFlow id="SF_B6" sourceRef="Task_MatchUsers"    targetRef="Task_StreamMessages"/>
+    <bpmn:sequenceFlow id="SF_B7" sourceRef="Task_StreamMessages" targetRef="Task_SaveReview"/>
+    <bpmn:sequenceFlow id="SF_B8" sourceRef="Task_SaveReview"    targetRef="End_BE"/>
+  </bpmn:process>
+
+  <!-- =================== EXTERNAL PROCESS =================== -->
+  <bpmn:process id="Process_Ext" isExecutable="false">
+    <bpmn:task id="Task_EmailSMS"   name="Email / SMS OTP provider"/>
+    <bpmn:task id="Task_JWTStore"   name="JWT / localStorage"/>
+    <bpmn:task id="Task_S3Storage"  name="S3 / file storage"/>
+    <bpmn:task id="Task_WSServer"   name="WebSocket server"/>
+    <bpmn:task id="Task_ReviewsDB"  name="Reviews datastore"/>
+  </bpmn:process>
+
+  <!-- =================== LEGEND PROCESS =================== -->
+  <bpmn:process id="Process_Legend" isExecutable="false">
+    <bpmn:startEvent id="L_StartEvent" name="New event"/>
+    <bpmn:endEvent   id="L_EndEvent"   name="Termination of event"/>
+    <bpmn:intermediateCatchEvent id="L_MsgEvent" name="Message event">
+      <bpmn:messageEventDefinition id="L_MED_Legend"/>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:exclusiveGateway id="L_GatewayX" name="Exclusive gateway"/>
+    <bpmn:parallelGateway  id="L_GatewayP" name="Parallel gateway"/>
+    <bpmn:task        id="L_Task"        name="Process Task"/>
+    <bpmn:subProcess  id="L_SubProcess"  name="Sub-process task"/>
+    <bpmn:callActivity id="L_CallActivity" name="Sub-system activity"/>
+
+    <bpmn:textAnnotation id="TA_SeqFlow">
+      <bpmn:text>&#9472;&#9472;&#10142;  Sequence Flow  (solid arrow, within a single pool/process)</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TA_MsgFlow">
+      <bpmn:text>- - &#10142;  Message Flow  (dashed arrow, between separate pools / systems)</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TA_Pool">
+      <bpmn:text>Pool / Lane &#8212; horizontal swimlane container that groups tasks of one participant (User, Frontend, Backend, External).</bpmn:text>
+    </bpmn:textAnnotation>
+  </bpmn:process>
+
+  <!-- =================== DIAGRAM (DI) =================== -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_Qamqor">
+
+      <!-- Pools -->
+      <bpmndi:BPMNShape id="Pool_User_di" bpmnElement="Pool_User" isHorizontal="true">
+        <dc:Bounds x="160" y="60"  width="1750" height="260"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Pool_FE_di" bpmnElement="Pool_FE" isHorizontal="true">
+        <dc:Bounds x="160" y="340" width="1750" height="180"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Pool_BE_di" bpmnElement="Pool_BE" isHorizontal="true">
+        <dc:Bounds x="160" y="540" width="1750" height="180"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Pool_Ext_di" bpmnElement="Pool_Ext" isHorizontal="true">
+        <dc:Bounds x="160" y="740" width="1750" height="140"/>
+      </bpmndi:BPMNShape>
+
+      <!-- ============ USER POOL SHAPES (mid y = 190) ============ -->
+      <bpmndi:BPMNShape id="Start_User_di" bpmnElement="Start_User">
+        <dc:Bounds x="222" y="172" width="36" height="36"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="210" y="215" width="60" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ViewLanding_di" bpmnElement="Task_ViewLanding">
+        <dc:Bounds x="290" y="150" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ClickAuth_di" bpmnElement="Task_ClickAuth">
+        <dc:Bounds x="410" y="150" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_EnterCreds_di" bpmnElement="Task_EnterCreds">
+        <dc:Bounds x="540" y="150" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Catch_OTP_di" bpmnElement="Catch_OTP">
+        <dc:Bounds x="752" y="172" width="36" height="36"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="740" y="215" width="60" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_OTPValid_di" bpmnElement="Gateway_OTPValid" isMarkerVisible="true">
+        <dc:Bounds x="835" y="165" width="50" height="50"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="825" y="135" width="70" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Role_di" bpmnElement="Gateway_Role" isMarkerVisible="true">
+        <dc:Bounds x="1185" y="165" width="50" height="50"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="1190" y="135" width="40" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CreateRequest_di" bpmnElement="Task_CreateRequest">
+        <dc:Bounds x="1290" y="80"  width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_BrowseRequest_di" bpmnElement="Task_BrowseRequest">
+        <dc:Bounds x="1290" y="220" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Join_di" bpmnElement="Gateway_Join" isMarkerVisible="true">
+        <dc:Bounds x="1430" y="165" width="50" height="50"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="1410" y="135" width="90" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Chat_di" bpmnElement="Task_Chat">
+        <dc:Bounds x="1500" y="150" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_DoneReview_di" bpmnElement="Task_DoneReview">
+        <dc:Bounds x="1620" y="150" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_User_di" bpmnElement="End_User">
+        <dc:Bounds x="1755" y="172" width="36" height="36"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="1735" y="215" width="80" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <!-- ============ FE POOL SHAPES (mid y = 430) ============ -->
+      <bpmndi:BPMNShape id="Start_FE_di" bpmnElement="Start_FE">
+        <dc:Bounds x="222" y="412" width="36" height="36"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="212" y="455" width="56" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RenderHome_di" bpmnElement="Task_RenderHome">
+        <dc:Bounds x="290" y="390" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RenderAuth_di" bpmnElement="Task_RenderAuth">
+        <dc:Bounds x="410" y="390" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ValidateForm_di" bpmnElement="Task_ValidateForm">
+        <dc:Bounds x="540" y="390" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PersistToken_di" bpmnElement="Task_PersistToken">
+        <dc:Bounds x="980" y="390" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_AuthGuard_di" bpmnElement="Gateway_AuthGuard" isMarkerVisible="true">
+        <dc:Bounds x="1110" y="405" width="50" height="50"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="1100" y="375" width="70" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RenderDashboard_di" bpmnElement="Task_RenderDashboard">
+        <dc:Bounds x="1190" y="390" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PushNotif_di" bpmnElement="Task_PushNotif">
+        <dc:Bounds x="1390" y="390" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PostReview_di" bpmnElement="Task_PostReview">
+        <dc:Bounds x="1620" y="390" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_FE_di" bpmnElement="End_FE">
+        <dc:Bounds x="1755" y="412" width="36" height="36"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="1745" y="455" width="60" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <!-- ============ BE POOL SHAPES (mid y = 630) ============ -->
+      <bpmndi:BPMNShape id="Start_BE_di" bpmnElement="Start_BE">
+        <dc:Bounds x="222" y="612" width="36" height="36"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="210" y="655" width="60" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SendOtp_di" bpmnElement="Task_SendOtp">
+        <dc:Bounds x="540" y="590" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_VerifyOtp_di" bpmnElement="Task_VerifyOtp">
+        <dc:Bounds x="800" y="590" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_LoadProfile_di" bpmnElement="Task_LoadProfile">
+        <dc:Bounds x="980" y="590" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PersistRequests_di" bpmnElement="Task_PersistRequests">
+        <dc:Bounds x="1290" y="590" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_MatchUsers_di" bpmnElement="Task_MatchUsers">
+        <dc:Bounds x="1390" y="590" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_StreamMessages_di" bpmnElement="Task_StreamMessages">
+        <dc:Bounds x="1500" y="590" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SaveReview_di" bpmnElement="Task_SaveReview">
+        <dc:Bounds x="1620" y="590" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_BE_di" bpmnElement="End_BE">
+        <dc:Bounds x="1755" y="612" width="36" height="36"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="1735" y="655" width="80" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <!-- ============ EXT POOL SHAPES (mid y = 810) ============ -->
+      <bpmndi:BPMNShape id="Task_EmailSMS_di" bpmnElement="Task_EmailSMS">
+        <dc:Bounds x="540" y="780" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_JWTStore_di" bpmnElement="Task_JWTStore">
+        <dc:Bounds x="980" y="780" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_S3Storage_di" bpmnElement="Task_S3Storage">
+        <dc:Bounds x="1280" y="780" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_WSServer_di" bpmnElement="Task_WSServer">
+        <dc:Bounds x="1490" y="780" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ReviewsDB_di" bpmnElement="Task_ReviewsDB">
+        <dc:Bounds x="1620" y="780" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+
+      <!-- ============ USER LANE EDGES ============ -->
+      <bpmndi:BPMNEdge id="SF_U1_di" bpmnElement="SF_U1">
+        <di:waypoint x="258" y="190"/><di:waypoint x="290" y="190"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U2_di" bpmnElement="SF_U2">
+        <di:waypoint x="390" y="190"/><di:waypoint x="410" y="190"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U3_di" bpmnElement="SF_U3">
+        <di:waypoint x="510" y="190"/><di:waypoint x="540" y="190"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U4_di" bpmnElement="SF_U4">
+        <di:waypoint x="640" y="190"/><di:waypoint x="752" y="190"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U5_di" bpmnElement="SF_U5">
+        <di:waypoint x="788" y="190"/><di:waypoint x="835" y="190"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U_OTP_YES_di" bpmnElement="SF_U_OTP_YES">
+        <di:waypoint x="885" y="190"/><di:waypoint x="1185" y="190"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="1020" y="170" width="20" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U_OTP_NO_di" bpmnElement="SF_U_OTP_NO">
+        <di:waypoint x="860" y="215"/><di:waypoint x="860" y="270"/>
+        <di:waypoint x="590" y="270"/><di:waypoint x="590" y="230"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="710" y="252" width="20" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U_ELDERLY_di" bpmnElement="SF_U_ELDERLY">
+        <di:waypoint x="1210" y="165"/><di:waypoint x="1210" y="120"/>
+        <di:waypoint x="1290" y="120"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="1230" y="100" width="50" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U_VOLUNTEER_di" bpmnElement="SF_U_VOLUNTEER">
+        <di:waypoint x="1210" y="215"/><di:waypoint x="1210" y="260"/>
+        <di:waypoint x="1290" y="260"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="1225" y="265" width="60" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U_E_TO_J_di" bpmnElement="SF_U_E_TO_J">
+        <di:waypoint x="1390" y="120"/><di:waypoint x="1455" y="120"/>
+        <di:waypoint x="1455" y="165"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U_V_TO_J_di" bpmnElement="SF_U_V_TO_J">
+        <di:waypoint x="1390" y="260"/><di:waypoint x="1455" y="260"/>
+        <di:waypoint x="1455" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U6_di" bpmnElement="SF_U6">
+        <di:waypoint x="1480" y="190"/><di:waypoint x="1500" y="190"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U7_di" bpmnElement="SF_U7">
+        <di:waypoint x="1600" y="190"/><di:waypoint x="1620" y="190"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_U8_di" bpmnElement="SF_U8">
+        <di:waypoint x="1720" y="190"/><di:waypoint x="1755" y="190"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- ============ FE LANE EDGES ============ -->
+      <bpmndi:BPMNEdge id="SF_F1_di" bpmnElement="SF_F1">
+        <di:waypoint x="258" y="430"/><di:waypoint x="290" y="430"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_F2_di" bpmnElement="SF_F2">
+        <di:waypoint x="390" y="430"/><di:waypoint x="410" y="430"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_F3_di" bpmnElement="SF_F3">
+        <di:waypoint x="510" y="430"/><di:waypoint x="540" y="430"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_F4_di" bpmnElement="SF_F4">
+        <di:waypoint x="640" y="430"/><di:waypoint x="980" y="430"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_F5_di" bpmnElement="SF_F5">
+        <di:waypoint x="1080" y="430"/><di:waypoint x="1110" y="430"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_F_GUARD_OK_di" bpmnElement="SF_F_GUARD_OK">
+        <di:waypoint x="1160" y="430"/><di:waypoint x="1190" y="430"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="1165" y="410" width="20" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_F_GUARD_NO_di" bpmnElement="SF_F_GUARD_NO">
+        <di:waypoint x="1135" y="405"/><di:waypoint x="1135" y="360"/>
+        <di:waypoint x="460" y="360"/><di:waypoint x="460" y="390"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="780" y="342" width="60" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_F6_di" bpmnElement="SF_F6">
+        <di:waypoint x="1290" y="430"/><di:waypoint x="1390" y="430"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_F7_di" bpmnElement="SF_F7">
+        <di:waypoint x="1490" y="430"/><di:waypoint x="1620" y="430"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_F8_di" bpmnElement="SF_F8">
+        <di:waypoint x="1720" y="430"/><di:waypoint x="1755" y="430"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- ============ BE LANE EDGES ============ -->
+      <bpmndi:BPMNEdge id="SF_B1_di" bpmnElement="SF_B1">
+        <di:waypoint x="258" y="630"/><di:waypoint x="540" y="630"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_B2_di" bpmnElement="SF_B2">
+        <di:waypoint x="640" y="630"/><di:waypoint x="800" y="630"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_B3_di" bpmnElement="SF_B3">
+        <di:waypoint x="900" y="630"/><di:waypoint x="980" y="630"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_B4_di" bpmnElement="SF_B4">
+        <di:waypoint x="1080" y="630"/><di:waypoint x="1290" y="630"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_B5_di" bpmnElement="SF_B5">
+        <di:waypoint x="1390" y="630"/><di:waypoint x="1390" y="630"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_B6_di" bpmnElement="SF_B6">
+        <di:waypoint x="1490" y="630"/><di:waypoint x="1500" y="630"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_B7_di" bpmnElement="SF_B7">
+        <di:waypoint x="1600" y="630"/><di:waypoint x="1620" y="630"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF_B8_di" bpmnElement="SF_B8">
+        <di:waypoint x="1720" y="630"/><di:waypoint x="1755" y="630"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- ============ MESSAGE FLOWS (between pools, dashed) ============ -->
+      <bpmndi:BPMNEdge id="MF_FormSubmit_di" bpmnElement="MF_FormSubmit">
+        <di:waypoint x="590" y="230"/><di:waypoint x="590" y="390"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_OtpRequest_di" bpmnElement="MF_OtpRequest">
+        <di:waypoint x="590" y="470"/><di:waypoint x="590" y="590"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_OtpToProvider_di" bpmnElement="MF_OtpToProvider">
+        <di:waypoint x="590" y="670"/><di:waypoint x="590" y="780"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_OtpDeliver_di" bpmnElement="MF_OtpDeliver">
+        <di:waypoint x="660" y="810"/><di:waypoint x="752" y="810"/>
+        <di:waypoint x="752" y="190"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_OtpEnter_di" bpmnElement="MF_OtpEnter">
+        <di:waypoint x="850" y="208"/><di:waypoint x="850" y="590"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_TokenToFE_di" bpmnElement="MF_TokenToFE">
+        <di:waypoint x="1030" y="590"/><di:waypoint x="1030" y="470"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_JwtStore_di" bpmnElement="MF_JwtStore">
+        <di:waypoint x="1050" y="670"/><di:waypoint x="1050" y="780"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_DashRender_di" bpmnElement="MF_DashRender">
+        <di:waypoint x="1240" y="390"/><di:waypoint x="1210" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_CreateReq_di" bpmnElement="MF_CreateReq">
+        <di:waypoint x="1340" y="160"/><di:waypoint x="1340" y="590"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_BrowseReq_di" bpmnElement="MF_BrowseReq">
+        <di:waypoint x="1340" y="300"/><di:waypoint x="1340" y="590"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_StoreFile_di" bpmnElement="MF_StoreFile">
+        <di:waypoint x="1340" y="670"/><di:waypoint x="1340" y="780"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_Match_di" bpmnElement="MF_Match">
+        <di:waypoint x="1440" y="590"/><di:waypoint x="1440" y="470"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_Notify_di" bpmnElement="MF_Notify">
+        <di:waypoint x="1440" y="390"/><di:waypoint x="1455" y="215"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_Chat_Up_di" bpmnElement="MF_Chat_Up">
+        <di:waypoint x="1550" y="230"/><di:waypoint x="1550" y="590"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_Chat_WS_di" bpmnElement="MF_Chat_WS">
+        <di:waypoint x="1550" y="670"/><di:waypoint x="1550" y="780"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_ReviewSubmit_di" bpmnElement="MF_ReviewSubmit">
+        <di:waypoint x="1670" y="230"/><di:waypoint x="1670" y="390"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_ReviewSave_di" bpmnElement="MF_ReviewSave">
+        <di:waypoint x="1670" y="470"/><di:waypoint x="1670" y="590"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_ReviewDB_di" bpmnElement="MF_ReviewDB">
+        <di:waypoint x="1680" y="670"/><di:waypoint x="1680" y="780"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- ============ LEGEND POOL SHAPES ============ -->
+      <bpmndi:BPMNShape id="Pool_Legend_di" bpmnElement="Pool_Legend" isHorizontal="true">
+        <dc:Bounds x="160" y="900" width="1750" height="240"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="L_StartEvent_di" bpmnElement="L_StartEvent">
+        <dc:Bounds x="240" y="957" width="36" height="36"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="225" y="1000" width="66" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="L_EndEvent_di" bpmnElement="L_EndEvent">
+        <dc:Bounds x="380" y="957" width="36" height="36"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="345" y="1000" width="106" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="L_MsgEvent_di" bpmnElement="L_MsgEvent">
+        <dc:Bounds x="520" y="957" width="36" height="36"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="495" y="1000" width="86" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="L_GatewayX_di" bpmnElement="L_GatewayX" isMarkerVisible="true">
+        <dc:Bounds x="660" y="950" width="50" height="50"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="640" y="1005" width="90" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="L_GatewayP_di" bpmnElement="L_GatewayP">
+        <dc:Bounds x="800" y="950" width="50" height="50"/>
+        <bpmndi:BPMNLabel><dc:Bounds x="780" y="1005" width="90" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="L_Task_di" bpmnElement="L_Task">
+        <dc:Bounds x="930" y="935" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="L_SubProcess_di" bpmnElement="L_SubProcess" isExpanded="false">
+        <dc:Bounds x="1080" y="935" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="L_CallActivity_di" bpmnElement="L_CallActivity">
+        <dc:Bounds x="1230" y="935" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="TA_SeqFlow_di" bpmnElement="TA_SeqFlow">
+        <dc:Bounds x="240" y="1055" width="500" height="34"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="TA_MsgFlow_di" bpmnElement="TA_MsgFlow">
+        <dc:Bounds x="760" y="1055" width="500" height="34"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="TA_Pool_di" bpmnElement="TA_Pool">
+        <dc:Bounds x="1280" y="1055" width="610" height="34"/>
+      </bpmndi:BPMNShape>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

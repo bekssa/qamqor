@@ -1,0 +1,35 @@
+#!/bin/sh
+# ----------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements. Maven Wrapper Script (Unix/macOS/Linux)
+# ----------------------------------------------------------------------------
+set -e
+
+MAVEN_WRAPPER_PROPERTIES_PATH=".mvn/wrapper/maven-wrapper.properties"
+WRAPPER_JAR=".mvn/wrapper/maven-wrapper.jar"
+WRAPPER_LAUNCHER="org.apache.maven.wrapper.MavenWrapperMain"
+
+# Resolve JAVA_HOME if not set
+if [ -z "$JAVA_HOME" ]; then
+  JAVA_HOME=$(java -XshowSettings:all -version 2>&1 \
+    | grep "java.home" | awk '{print $3}')
+fi
+
+# Download wrapper jar if missing
+if [ ! -f "$WRAPPER_JAR" ]; then
+  DOWNLOAD_URL=$(grep 'wrapperUrl' "$MAVEN_WRAPPER_PROPERTIES_PATH" | cut -d'=' -f2)
+  echo "Downloading Maven Wrapper from $DOWNLOAD_URL"
+  if command -v curl >/dev/null 2>&1; then
+    curl -o "$WRAPPER_JAR" "$DOWNLOAD_URL" -sL
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$WRAPPER_JAR" "$DOWNLOAD_URL"
+  else
+    echo "ERROR: Neither curl nor wget is available." >&2
+    exit 1
+  fi
+fi
+
+exec "$JAVA_HOME/bin/java" \
+  -classpath "$WRAPPER_JAR" \
+  "$WRAPPER_LAUNCHER" \
+  -f "$0" "$@"

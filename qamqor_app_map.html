@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Qamqor — App Map</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    font-family: Helvetica, Arial, sans-serif;
+    background: #f4f4f5; color: #18181b;
+  }
+  .toolbar {
+    display: flex; gap: 10px; align-items: center;
+    background: white; border: 1px solid #d4d4d8; border-radius: 8px;
+    padding: 12px 16px; margin: 0 auto 16px; max-width: 1760px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .toolbar h1 { margin: 0 12px 0 0; font-size: 16px; }
+  .toolbar button {
+    border: 1px solid #18181b; background: #18181b; color: white;
+    padding: 8px 14px; border-radius: 6px; font: 600 13px Helvetica;
+    cursor: pointer;
+  }
+  .toolbar button:hover { background: #27272a; }
+  .toolbar button.alt { background: white; color: #18181b; }
+  .toolbar button.alt:hover { background: #f4f4f5; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar small { color: #52525b; }
+  .canvas {
+    background: white; border: 1px solid #d4d4d8; border-radius: 8px;
+    padding: 8px; max-width: 1760px; margin: 0 auto;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04); overflow: auto;
+  }
+  .canvas svg { width: 100%; height: auto; display: block; }
+  @media print {
+    body { background: white; padding: 0; }
+    .toolbar { display: none; }
+    .canvas { border: 0; box-shadow: none; padding: 0; max-width: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>Qamqor — App Map</h1>
+  <button id="dl-svg">Скачать SVG</button>
+  <button id="dl-png">Скачать PNG (2x)</button>
+  <button id="dl-pdf" class="alt">Сохранить PDF (Ctrl+P → Save as PDF)</button>
+  <span class="spacer"></span>
+  <small>BPMN swim lanes: User · Frontend · Backend · External</small>
+</div>
+
+<div class="canvas" id="canvas">
+  <!-- SVG will be injected here -->
+</div>
+
+<script>
+(async () => {
+  // Load the SVG file from the same folder
+  const res = await fetch('qamqor_app_map.svg');
+  const svgText = await res.text();
+  document.getElementById('canvas').innerHTML = svgText;
+
+  const svg = document.querySelector('#canvas svg');
+
+  document.getElementById('dl-svg').onclick = () => {
+    const blob = new Blob([svgText], { type: 'image/svg+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'qamqor_app_map.svg';
+    a.click();
+  };
+
+  document.getElementById('dl-png').onclick = async () => {
+    const vb = svg.viewBox.baseVal;
+    const W = vb.width, H = vb.height;
+    const SCALE = 2;  // 2x for retina/print quality
+    const canvas = document.createElement('canvas');
+    canvas.width  = W * SCALE;
+    canvas.height = H * SCALE;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const img = new Image();
+    const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((b) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = 'qamqor_app_map.png';
+        a.click();
+      }, 'image/png');
+    };
+    img.src = url;
+  };
+
+  document.getElementById('dl-pdf').onclick = () => {
+    // Use browser's print → Save as PDF (vector quality)
+    window.print();
+  };
+})();
+</script>
+
+</body>
+</html>

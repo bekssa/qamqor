@@ -1,4 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { Client } from "@stomp/stompjs";
+import type { Chat, Message, ResponseStatus } from "@shared/api";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useLocation } from "wouter";
@@ -16,11 +18,16 @@ import {
   ArrowLeft,
   Send,
   CheckCheck,
+  Menu,
+  X,
 } from "lucide-react";
+
+import logoImg from "@/assets/services/logo.png";
 import { useAuth } from "@features/auth/model/context";
 import { useLanguage } from "@features/language/model/context";
 import { useAccessibility } from "@features/accessibility/model/context";
 import AuthGuard from "@app/guards/auth-guard";
+import { api } from "@shared/api";
 
 import imgHousehold from "@/assets/services/household.png";
 import imgMedical from "@/assets/services/medical.png";
@@ -29,8 +36,7 @@ import imgHomeWork from "@/assets/services/homework.png";
 import imgShopping from "@/assets/services/shopping.png";
 
 import imgUserPhoto from "@assets/Ellipse_374_1776245458894.png";
-import logoImg from "@/assets/logo.png";
-import imgHelperAvatar from "@assets/image_1776248251802.png";
+import imgQamqor from "@assets/Rectangle_240662641_1776245382727.png";
 
 const GREEN = "#2C9C42";
 const BLUE = "#3B82F6";
@@ -42,7 +48,7 @@ type TabKey = "create" | "search" | "notifications" | "settings";
 type RequestStatus = "active" | "completed" | "cancelled";
 
 interface ServiceRequest {
-  id: number;
+  id: string;
   serviceKey: string;
   serviceLabel: string;
   description: string;
@@ -55,38 +61,28 @@ interface ServiceRequest {
   status?: RequestStatus;
 }
 
-const STORAGE_KEY = (userId: number) => `qamqor-requests-v2-${userId}`;
-
-const SEED_REQUESTS: ServiceRequest[] = [
-  { id: 1, serviceKey: "escort", serviceLabel: "Сопровождение", description: "Сходить в аптеку за лекарствами", price: "4000", dateCreated: "18.06.2026", dateExecution: "20.06.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "active" },
-  { id: 2, serviceKey: "escort", serviceLabel: "Сопровождение", description: "Сходить в аптеку за лекарствами", price: "4000", dateCreated: "18.06.2026", dateExecution: "20.06.2026", address: "ул. Абая 50", helper: "", status: "active" },
-  { id: 3, serviceKey: "household", serviceLabel: "Бытовые услуги", description: "Уборка, приготовление еды", price: "3500", dateCreated: "18.06.2026", dateExecution: "20.06.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "active" },
-  { id: 4, serviceKey: "homework", serviceLabel: "Домашние работы", description: "Починить стул", price: "5000", dateCreated: "18.06.2026", dateExecution: "20.06.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "active" },
-  { id: 5, serviceKey: "escort", serviceLabel: "Сопровождение", description: "Сходить в аптеку за лекарствами", price: "4000", dateCreated: "10.05.2026", dateExecution: "12.05.2026", address: "ул. Ленина 10", helper: "Умбеталиев Али", status: "completed" },
-  { id: 6, serviceKey: "escort", serviceLabel: "Сопровождение", description: "Поход в больницу", price: "4000", dateCreated: "10.05.2026", dateExecution: "12.05.2026", address: "ул. Ленина 10", helper: "", status: "completed" },
-  { id: 7, serviceKey: "escort", serviceLabel: "Сопровождение", description: "Прогулка в парке", price: "4000", dateCreated: "01.04.2026", dateExecution: "03.04.2026", address: "пр. Республики 5", helper: "Умбеталиев Али", status: "completed" },
-  { id: 8, serviceKey: "homework", serviceLabel: "Домашние работы", description: "Починить стул", price: "5000", dateCreated: "01.04.2026", dateExecution: "03.04.2026", address: "пр. Республики 5", helper: "Умбеталиев Али", status: "completed" },
-  { id: 9, serviceKey: "escort", serviceLabel: "Сопровождение", description: "Сходить в аптеку за лекарствами", price: "4000", dateCreated: "15.03.2026", dateExecution: "16.03.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "cancelled" },
-  { id: 10, serviceKey: "homework", serviceLabel: "Домашние работы", description: "Починить стул", price: "5000", dateCreated: "15.03.2026", dateExecution: "16.03.2026", address: "ул. Абая 50", helper: "Умбеталиев Али", status: "cancelled" },
-];
-
 const SERVICE_IMG: Record<string, string> = {
   household: imgHousehold, medical: imgMedical, escort: imgEscort, homework: imgHomeWork, shopping: imgShopping,
 };
 
-function loadRequests(userId: number): ServiceRequest[] {
-  try {
-    const s = localStorage.getItem(STORAGE_KEY(userId));
-    if (s) {
-      const parsed: ServiceRequest[] = JSON.parse(s);
-      return parsed.map(r => ({ ...r, status: r.status ?? "active" }));
-    }
-  } catch { /**/ }
-  localStorage.setItem(STORAGE_KEY(userId), JSON.stringify(SEED_REQUESTS));
-  return SEED_REQUESTS;
-}
-function saveRequests(userId: number, reqs: ServiceRequest[]) {
-  localStorage.setItem(STORAGE_KEY(userId), JSON.stringify(reqs));
+function mapBackendRequest(r: { id: string; title: string; description: string; category: string; location: string; price?: number; scheduledDate?: string; status: string; createdAt: string; executorName?: string }): ServiceRequest {
+  const d = new Date(r.createdAt);
+  const dateCreated = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+  const statusMap: Record<string, RequestStatus> = { open: "active", in_progress: "active", completed: "completed", cancelled: "cancelled" };
+  const serviceLabels: Record<string, string> = { household: "Бытовые услуги", medical: "Медицинская помощь", escort: "Сопровождение", homework: "Домашние работы", shopping: "Покупки" };
+  return {
+    id: r.id,
+    serviceKey: r.category ?? "household",
+    serviceLabel: serviceLabels[r.category ?? ""] ?? r.title,
+    description: r.description ?? "",
+    price: r.price != null ? String(r.price) : "",
+    dateCreated,
+    dateExecution: r.scheduledDate ?? "",
+    address: r.location ?? "",
+    city: "",
+    helper: r.executorName ?? "",
+    status: statusMap[r.status] ?? "active",
+  };
 }
 
 function getTodayStr() {
@@ -237,10 +233,10 @@ function AccessibilityToggle() {
 }
 
 /* ─────────────── user card ─────────────── */
-function UserCard({ user }: { user: { firstName: string; lastName: string; email: string; phone: string; role: string; birthDate?: string; city?: string } }) {
+function UserCard({ user }: { user: { firstName: string; lastName: string; email: string; phone: string; role: string; birthDate?: string; city?: string; avatarUrl?: string } }) {
   const { t } = useLanguage();
-  const initials = `${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase();
-  const roleLabel = user.role === "seek-help" ? t("dashboard.roleSeekHelp") : t("dashboard.roleOfferHelp");
+  const initials = `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase();
+  const roleLabel = (user.role === "elderly" || user.role === "seek-help") ? t("dashboard.roleSeekHelp") : t("dashboard.roleOfferHelp");
   const rows = [
     { label: t("dashboard.userRole"), value: roleLabel },
     { label: t("dashboard.userEmail"), value: user.email },
@@ -252,10 +248,13 @@ function UserCard({ user }: { user: { firstName: string; lastName: string; email
     <div className="px-3 pt-4 pb-2">
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex items-center gap-2.5 px-3 py-3">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
-            style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
-            {initials}
-          </div>
+          {user.avatarUrl
+            ? <img src={user.avatarUrl} className="w-11 h-11 rounded-full object-cover shrink-0" alt="avatar" />
+            : <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
+              style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+              {initials}
+            </div>
+          }
           <p className="font-bold text-gray-900 text-sm leading-tight truncate">{user.lastName} {user.firstName}</p>
         </div>
         <div className="border-t border-gray-100 mx-3" />
@@ -276,7 +275,7 @@ function UserCard({ user }: { user: { firstName: string; lastName: string; email
 function Sidebar({ activeNav, setActiveNav, user }: {
   activeNav: NavKey;
   setActiveNav: (k: NavKey) => void;
-  user: { firstName: string; lastName: string; email: string; phone: string; role: string; birthDate?: string; city?: string };
+  user: { firstName: string; lastName: string; email: string; phone: string; role: string; birthDate?: string; city?: string; avatarUrl?: string };
 }) {
   const { t } = useLanguage();
   const { logout } = useAuth();
@@ -322,8 +321,8 @@ function ServiceCard({ img, title, desc, selected, onSelect, selectLabel, servic
   serviceKey: string; img: string; title: string; desc: string; selected: boolean; onSelect: () => void; selectLabel: string;
 }) {
   return (
-    <div className="flex flex-col items-center p-4 bg-white rounded-2xl cursor-pointer transition-all flex-1 min-w-[160px]"
-      style={selected ? { outline: "2.5px solid #2563EB", boxShadow: "0 0 0 4px rgba(37,99,235,0.12)" } : { border: "1.5px solid #f0f0f0", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}
+    <div className="flex flex-col items-center p-4 bg-white rounded-2xl cursor-pointer transition-all w-[180px] shrink-0 snap-center"
+      style={selected ? { border: "2px solid #2563EB", boxShadow: "0 0 0 4px rgba(37,99,235,0.12)" } : { border: "2px solid #f0f0f0", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}
       onClick={onSelect}>
       <div className="w-full h-28 flex items-center justify-center mb-3">
         <img src={img} alt={title} className="max-h-full max-w-full object-contain" />
@@ -670,8 +669,9 @@ function SuccessModal({ onClose }: { onClose: () => void }) {
 }
 
 /* ─────────────── create-request tab ─────────────── */
-function CreateRequestTab({ userId }: { userId: number }) {
+function CreateRequestTab({ userId: _userId, version }: { userId: string; version?: number }) {
   const { t } = useLanguage();
+  const { allApproved, missingDocs, pendingDocs } = useDocAccess();
   const [selectedService, setSelectedService] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
@@ -680,9 +680,16 @@ function CreateRequestTab({ userId }: { userId: number }) {
   const [city, setCity] = useState("");
   const [showAddressPicker, setShowAddressPicker] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [requests, setRequests] = useState<ServiceRequest[]>(() => loadRequests(userId));
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editingReq, setEditingReq] = useState<ServiceRequest | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  useEffect(() => {
+    api.getMyRequests().then(list => {
+      setRequests(list.map(mapBackendRequest));
+    }).catch(() => { }).finally(() => setLoading(false));
+  }, [version]);
 
   const services = [
     { key: "household", img: imgHousehold, title: t("dashboard.serviceHousehold"), desc: t("dashboard.serviceHouseholdDesc") },
@@ -706,20 +713,58 @@ function CreateRequestTab({ userId }: { userId: number }) {
     return e;
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const errs = validate(); setErrors(errs);
     if (Object.keys(errs).length) return;
-    const newReq: ServiceRequest = { id: Date.now(), serviceKey: selectedService, serviceLabel: sel?.title ?? selectedService, description, price, dateCreated: getTodayStr(), dateExecution: date, address, city, helper: "", status: "active" };
-    const updated = [newReq, ...requests]; setRequests(updated); saveRequests(userId, updated);
-    setSelectedService(""); setDescription(""); setPrice(""); setDate(""); setAddress(""); setCity(""); setErrors({});
-    setShowSuccess(true);
+    try {
+      const created = await api.createRequest({
+        title: sel?.title ?? selectedService,
+        description,
+        category: selectedService,
+        location: address,
+        price: price ? parseInt(price, 10) : undefined,
+        scheduledDate: date,
+      });
+      setRequests(prev => [mapBackendRequest(created as any), ...prev]);
+      setSelectedService(""); setDescription(""); setPrice(""); setDate(""); setAddress(""); setCity(""); setErrors({});
+      setShowSuccess(true);
+    } catch (e) {
+      console.error("createRequest failed:", e);
+    }
   };
 
   return (
     <div className="space-y-4">
       <h2 className="text-base font-bold text-gray-800">{t("dashboard.createTitle")}</h2>
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-        <div className="flex gap-3">
+
+      {/* Doc access banner */}
+      {!allApproved && missingDocs.length > 0 && (
+        <div className="rounded-2xl px-5 py-4 flex items-start gap-3" style={{ background: "#FFFBEB", border: "1px solid #FDE68A" }}>
+          <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="#D97706" strokeWidth="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" strokeWidth="2" /><line x1="12" y1="17" x2="12.01" y2="17" strokeWidth="3" /></svg>
+          <div>
+            <p className="text-xs font-bold" style={{ color: "#92400E" }}>Невозможно создать заявку</p>
+            <p className="text-[11px] mt-0.5" style={{ color: "#B45309" }}>
+              Необходимо загрузить и получить одобрение для следующих документов:
+            </p>
+            <ul className="mt-1.5 space-y-0.5">
+              {missingDocs.map(d => (
+                <li key={d.key} className="text-[11px] flex items-center gap-1.5" style={{ color: "#B45309" }}>
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#D97706" }} />
+                  {d.label}
+                </li>
+              ))}
+            </ul>
+            {pendingDocs.length > 0 && (
+              <p className="text-[11px] mt-2" style={{ color: "#B45309" }}>
+                <span className="font-semibold">{pendingDocs.length} документ(а)</span> на проверке у администратора.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 overflow-hidden">
+        <div className="flex gap-3 overflow-x-auto pb-2 snap-x" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
           {services.map(s => (
             <ServiceCard key={s.key} serviceKey={s.key} img={s.img} title={s.title} desc={s.desc}
               selected={selectedService === s.key} onSelect={() => setSelectedService(s.key)} selectLabel={t("dashboard.selectBtn")} />
@@ -773,9 +818,10 @@ function CreateRequestTab({ userId }: { userId: number }) {
             onSelect={(addr, c) => { setAddress(addr); setCity(c); setShowAddressPicker(false); }}
           />
         )}
-        <button onClick={handleCreate}
-          className="px-5 py-2.5 text-white text-xs font-bold rounded-xl transition-opacity hover:opacity-90 shadow-sm"
-          style={{ background: GREEN }}>
+        <button onClick={allApproved ? handleCreate : undefined}
+          disabled={!allApproved}
+          className="px-5 py-2.5 text-white text-xs font-bold rounded-xl transition-opacity shadow-sm"
+          style={{ background: allApproved ? GREEN : "#9ca3af", cursor: allApproved ? "pointer" : "not-allowed", opacity: allApproved ? 1 : 0.7 }}>
           {t("dashboard.createBtn")}
         </button>
       </div>
@@ -854,9 +900,7 @@ function CreateRequestTab({ userId }: { userId: number }) {
           services={services}
           onClose={() => setEditingReq(null)}
           onSave={(updated) => {
-            const next = requests.map(r => r.id === updated.id ? updated : r);
-            setRequests(next);
-            saveRequests(userId, next);
+            setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
             setEditingReq(null);
           }}
         />
@@ -972,7 +1016,7 @@ function EditRequestModal({
 }
 
 /* ─────────────── completion modal ─────────────── */
-function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: () => void }) {
+function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (priceOverride?: number) => void }) {
   const { t } = useLanguage();
   const [agreedPrice, setAgreedPrice] = useState<"yes" | "no">("yes");
   const [finalPrice, setFinalPrice] = useState("");
@@ -1008,7 +1052,11 @@ function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
           </div>
         )}
 
-        <button onClick={onSubmit}
+        <button
+          onClick={() => {
+            const override = agreedPrice === "no" && finalPrice ? parseInt(finalPrice, 10) : undefined;
+            onSubmit(override);
+          }}
           className="px-10 py-3 text-white text-sm font-bold rounded-xl uppercase tracking-wide transition-opacity hover:opacity-90"
           style={{ background: GREEN }}>
           {t("dashboard.completionSubmit")}
@@ -1018,32 +1066,47 @@ function CompletionModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
   );
 }
 
-/* ─────────────── helper dashboard (offer-help role) ─────────────── */
+/* ─────────────── helper dashboard (volunteer role) ─────────────── */
 interface HelperRequest {
-  id: number;
+  id: string;
   name: string;
+  avatarUrl: string | null;
+  authorId: string;
   serviceLabel: string;
   description: string;
   price: string;
   dateCreated: string;
   dateExecution: string;
   address: string;
+  createdAtRaw: string;
 }
 
-const HELPER_ACTIVE: HelperRequest[] = [
-  { id: 1, name: "Лидия Абдешева", serviceLabel: "Сопровождение", description: "Необходимо съездить со мной в больницу к врачу, помочь с оформлением документов", price: "4000", dateCreated: "18 июня 2026 года", dateExecution: "20 июня 2026 года", address: "Сыганак 41" },
-];
+const HELPER_SERVICE_LABELS: Record<string, string> = {
+  household: "Бытовые услуги", medical: "Медицинская помощь",
+  escort: "Сопровождение", homework: "Домашние работы", shopping: "Покупки",
+};
 
-const AVAILABLE_REQS: HelperRequest[] = [
-  { id: 11, name: "Лидия Абдешева", serviceLabel: "Сопровождение", description: "Необходимо съездить со мной в больницу к врачу, помочь с оформлением документов", price: "4000", dateCreated: "18 июня 2026 года", dateExecution: "20 июня 2026 года", address: "Сыганак 41" },
-  { id: 12, name: "Лидия Абдешева", serviceLabel: "Сопровождение", description: "Необходимо съездить со мной в больницу к врачу, помочь с оформлением документов", price: "4000", dateCreated: "18 июня 2026 года", dateExecution: "20 июня 2026 года", address: "Сыганак 41" },
-  { id: 13, name: "Лидия Абдешева", serviceLabel: "Сопровождение", description: "Необходимо съездить со мной в больницу к врачу, помочь с оформлением документов", price: "4000", dateCreated: "18 июня 2026 года", dateExecution: "20 июня 2026 года", address: "Сыганак 41" },
-  { id: 14, name: "Лидия Абдешева", serviceLabel: "Сопровождение", description: "Необходимо съездить со мной в больницу к врачу, помочь с оформлением документов", price: "4000", dateCreated: "18 июня 2026 года", dateExecution: "20 июня 2026 года", address: "Сыганак 41" },
-];
+function mapHelperRequest(r: any): HelperRequest {
+  const d = new Date(r.createdAt);
+  const dateCreated = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+  return {
+    id: String(r.id),
+    name: r.authorName || "Пользователь",
+    avatarUrl: r.authorAvatarUrl ?? null,
+    authorId: r.authorId ?? "",
+    serviceLabel: HELPER_SERVICE_LABELS[r.category ?? ""] ?? r.title ?? "",
+    description: r.description ?? "",
+    price: r.price != null ? String(r.price) : "",
+    dateCreated,
+    dateExecution: r.scheduledDate ?? "",
+    address: r.location ?? "",
+    createdAtRaw: r.createdAt ?? "",
+  };
+}
 
 function HelperReqTable({ reqs, onComplete }: {
   reqs: HelperRequest[];
-  onComplete?: (id: number) => void;
+  onComplete?: (id: string) => void;
 }) {
   const { t } = useLanguage();
   const COLS = [t("dashboard.colDescription"), t("dashboard.colDateReg"), t("dashboard.colDateExec"), t("dashboard.colPrice"), t("dashboard.colAddress")];
@@ -1082,7 +1145,13 @@ function HelperReqTable({ reqs, onComplete }: {
             <tr key={req.id} className="hover:bg-gray-50 transition-colors">
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-start gap-2.5">
-                  <img src={imgHelperAvatar} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                  {req.avatarUrl
+                    ? <img src={req.avatarUrl} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                    : <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                      style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+                      {req.name.substring(0, 1).toUpperCase()}
+                    </div>
+                  }
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800 text-xs leading-tight">{req.name}</p>
                     <p className="text-[10px] text-gray-400 leading-tight mb-0.5">↳ {req.serviceLabel}</p>
@@ -1112,13 +1181,177 @@ function HelperReqTable({ reqs, onComplete }: {
   );
 }
 
-function HelperAvailableTable({ reqs }: { reqs: HelperRequest[] }) {
+function RequestDetailsModal({ req, onClose, onChat, onRequestRespond, responseStatus }: {
+  req: HelperRequest; onClose: () => void; onChat: () => void; onRequestRespond: () => void; responseStatus: ResponseStatus | null;
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transition-all transform scale-100 opacity-100" onClick={e => e.stopPropagation()}>
+        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-bold text-gray-900 text-lg">Полная информация о заявке</h3>
+        </div>
+        <div className="px-6 py-5 space-y-6">
+          <div className="flex items-center gap-4">
+            {req.avatarUrl
+              ? <img src={req.avatarUrl} alt={req.name} className="w-14 h-14 rounded-full object-cover shrink-0" />
+              : <div className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-xl shrink-0"
+                style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+                {req.name.substring(0, 1).toUpperCase()}
+              </div>
+            }
+            <div>
+              <p className="font-bold text-gray-800 text-base">{req.name}</p>
+              <p className="text-sm text-gray-500">Заказчик</p>
+            </div>
+          </div>
+
+          <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1">Категория</p>
+              <p className="text-sm font-semibold text-gray-800">{req.serviceLabel}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1">Описание задачи</p>
+              <p className="text-sm text-gray-700 leading-relaxed">{req.description}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-400 font-medium mb-1">Дата регистрации</p>
+                <p className="text-sm text-gray-800">{req.dateCreated}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 font-medium mb-1">Желаемая дата</p>
+                <p className="text-sm text-gray-800 font-medium">{req.dateExecution}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1">Вознаграждение</p>
+              <p className="text-base font-bold" style={{ color: "#2C9C42" }}>{req.price}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1">Адрес</p>
+              <p className="text-sm text-gray-800">{req.address}</p>
+            </div>
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-3">
+          <button onClick={() => { onClose(); onChat(); }}
+            className="px-5 py-2.5 rounded-xl font-bold text-sm transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+            style={{ background: "#FEF9C3", color: "#EAB308", border: "1px solid #FDE047" }}>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+            Написать
+          </button>
+          {responseStatus === "PENDING" && (
+            <button disabled className="px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+              style={{ background: BLUE, color: "white", border: `1px solid ${BLUE}`, cursor: "default" }}>
+              Откликнуто
+            </button>
+          )}
+          {responseStatus === "ACCEPTED" && (
+            <button disabled className="px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+              style={{ background: "#22C55E", color: "white", border: "1px solid #22C55E", cursor: "default" }}>
+              Принято
+            </button>
+          )}
+          {responseStatus === "DECLINED" && (
+            <button disabled className="px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+              style={{ background: "#EF4444", color: "white", border: "1px solid #EF4444", cursor: "default" }}>
+              Отклонена
+            </button>
+          )}
+          {!responseStatus && (
+            <button onClick={onRequestRespond}
+              className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
+              style={{ background: "white", color: "#22C55E", border: "1px solid #22C55E", cursor: "pointer" }}>
+              Откликнуться
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmRespondModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-5 text-center space-y-2">
+          <p className="font-bold text-gray-900 text-base">Откликнуться на заявку?</p>
+          <p className="text-sm text-gray-500">Заказчик получит уведомление о вашем отклике. Подтвердите действие.</p>
+        </div>
+        <div className="px-6 pb-5 flex gap-3">
+          <button onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl font-semibold text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+            Отмена
+          </button>
+          <button onClick={onConfirm}
+            className="flex-1 py-2.5 rounded-xl font-semibold text-sm text-white transition-opacity hover:opacity-90"
+            style={{ background: BLUE }}>
+            Подтверждаю
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HelperAvailableTable({ reqs, onChat, onAccept, responseStatuses, loadingRespondId, canRespond }: {
+  reqs: HelperRequest[];
+  onChat: (authorId: string) => void;
+  onAccept: (id: string) => void;
+  responseStatuses: Record<string, ResponseStatus>;
+  loadingRespondId: string | null;
+  canRespond?: boolean;
+}) {
   const { t } = useLanguage();
   const COLS = [t("dashboard.colDescription"), t("dashboard.colDateReg"), t("dashboard.colDateExec"), t("dashboard.colPrice"), t("dashboard.colAddress")];
-  const [accepted, setAccepted] = useState<number[]>([]);
-  const [rejected, setRejected] = useState<number[]>([]);
+  const [viewingReq, setViewingReq] = useState<HelperRequest | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  const visible = reqs.filter(r => !rejected.includes(r.id));
+  function respondBtn(reqId: string, compact = true) {
+    const status = responseStatuses[reqId];
+    const loading = loadingRespondId === reqId;
+    if (status === "PENDING") return (
+      <button disabled className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold" : "px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"}
+        style={{ background: BLUE, color: "white", border: `1px solid ${BLUE}`, cursor: "default" }}>
+        Откликнуто
+      </button>
+    );
+    if (status === "ACCEPTED") return (
+      <button disabled className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold" : "px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"}
+        style={{ background: "#22C55E", color: "white", border: "1px solid #22C55E", cursor: "default" }}>
+        Принято
+      </button>
+    );
+    if (status === "DECLINED") return (
+      <button disabled className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold" : "px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"}
+        style={{ background: "#EF4444", color: "white", border: "1px solid #EF4444", cursor: "default" }}>
+        Отклонена
+      </button>
+    );
+    if (loading) return (
+      <button disabled className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold" : "px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"}
+        style={{ background: "white", color: "#9ca3af", border: "1px solid #d1d5db", cursor: "wait" }}>
+        ...
+      </button>
+    );
+    if (canRespond === false) return (
+      <button disabled className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold" : "px-5 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"}
+        title="Загрузите и верифицируйте документы"
+        style={{ background: "#f3f4f6", color: "#9ca3af", border: "1px solid #e5e7eb", cursor: "not-allowed" }}>
+        Откликнуться
+      </button>
+    );
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); setConfirmingId(reqId); }}
+        className={compact ? "h-7 rounded-lg px-2.5 text-[10px] font-semibold transition-all" : "px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"}
+        style={{ background: "white", color: "#22C55E", border: "1px solid #22C55E", cursor: "pointer" }}>
+        Откликнуться
+      </button>
+    );
+  }
 
   return (
     <div className="overflow-x-auto px-4 pt-3 pb-1">
@@ -1143,11 +1376,17 @@ function HelperAvailableTable({ reqs }: { reqs: HelperRequest[] }) {
           </tr>
         </thead>
         <tbody>
-          {visible.map(req => (
-            <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+          {reqs.map(req => (
+            <tr key={req.id} onClick={() => setViewingReq(req)} className="hover:bg-gray-50 cursor-pointer transition-colors">
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-start gap-2.5">
-                  <img src={imgHelperAvatar} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                  {req.avatarUrl
+                    ? <img src={req.avatarUrl} alt={req.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                    : <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                      style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+                      {req.name.substring(0, 1).toUpperCase()}
+                    </div>
+                  }
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800 text-xs leading-tight">{req.name}</p>
                     <p className="text-[10px] text-gray-400 leading-tight mb-0.5">↳ {req.serviceLabel}</p>
@@ -1161,39 +1400,151 @@ function HelperAvailableTable({ reqs }: { reqs: HelperRequest[] }) {
               <td className="px-3 py-3 text-gray-600 border-b border-gray-100">{req.address}</td>
               <td className="px-3 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-1.5 justify-end">
-                  <button className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
+                  <button onClick={(e) => { e.stopPropagation(); onChat(req.authorId); }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
                     style={{ background: "#FEF9C3", border: "1px solid #FDE047" }} title="Написать">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
                   </button>
-                  <button onClick={() => setAccepted(a => [...a, req.id])}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
-                    style={{ background: accepted.includes(req.id) ? GREEN : "#DCFCE7", border: `1px solid ${accepted.includes(req.id) ? GREEN : "#86EFAC"}` }} title="Принять">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke={accepted.includes(req.id) ? "white" : "#22C55E"} strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
-                  </button>
-                  <button onClick={() => setRejected(r => [...r, req.id])}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-opacity hover:opacity-80"
-                    style={{ background: "#FEE2E2", border: "1px solid #FCA5A5" }} title="Отклонить">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                  </button>
+                  {respondBtn(req.id)}
                 </div>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      {viewingReq && (
+        <RequestDetailsModal
+          req={viewingReq}
+          onClose={() => setViewingReq(null)}
+          onChat={() => onChat(viewingReq.authorId)}
+          onRequestRespond={() => { setViewingReq(null); setConfirmingId(viewingReq.id); }}
+          responseStatus={responseStatuses[viewingReq.id] ?? null}
+        />
+      )}
+      {confirmingId && (
+        <ConfirmRespondModal
+          onConfirm={() => { onAccept(confirmingId); setConfirmingId(null); }}
+          onCancel={() => setConfirmingId(null)}
+        />
+      )}
     </div>
   );
 }
 
-function HelperDashboard({ user }: { user: { firstName: string } }) {
+function HelperDashboard({ user, onOpenChat, cancelledRequestId, declinedRequestId, acceptedRequestId, activeReqsVersion }: {
+  user: { firstName: string };
+  onOpenChat: (chat: Chat) => void;
+  cancelledRequestId?: string | null;
+  declinedRequestId?: string | null;
+  acceptedRequestId?: string | null;
+  activeReqsVersion?: number;
+}) {
   const { t } = useLanguage();
-  const [activeReqs, setActiveReqs] = useState<HelperRequest[]>(HELPER_ACTIVE);
-  const [completingId, setCompletingId] = useState<number | null>(null);
+  const { allApproved, missingDocs, pendingDocs } = useDocAccess();
+  const [activeReqs, setActiveReqs] = useState<HelperRequest[]>([]);
+  const [availableReqs, setAvailableReqs] = useState<HelperRequest[]>([]);
+  const [responseStatuses, setResponseStatuses] = useState<Record<string, ResponseStatus>>({});
+  const [loadingRespondId, setLoadingRespondId] = useState<string | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [filterType, setFilterType] = useState<"date" | "distance" | "price" | "accepted" | "declined">("date");
 
-  const handleComplete = (id: number) => setCompletingId(id);
-  const handleSubmitCompletion = () => {
-    setActiveReqs(r => r.filter(x => x.id !== completingId));
+  const sortedAndFilteredAvailableReqs = useMemo(() => {
+    let list = [...availableReqs];
+    if (filterType === "accepted") {
+      list = list.filter(r => responseStatuses[r.id] === "ACCEPTED");
+    } else if (filterType === "declined") {
+      list = list.filter(r => responseStatuses[r.id] === "DECLINED");
+    } else {
+      if (filterType === "price") {
+        list.sort((a, b) => {
+          const pa = a.price ? parseInt(a.price, 10) : 0;
+          const pb = b.price ? parseInt(b.price, 10) : 0;
+          return pb - pa;
+        });
+      } else if (filterType === "date") {
+        list.sort((a, b) => new Date(b.createdAtRaw).getTime() - new Date(a.createdAtRaw).getTime());
+      } else if (filterType === "distance") {
+        list.sort((a, b) => a.address.localeCompare(b.address));
+      }
+    }
+    return list;
+  }, [availableReqs, filterType, responseStatuses]);
+
+  useEffect(() => {
+    api.getAssignedRequests()
+      .then(list => setActiveReqs(list.filter((r: any) => r.status === "in_progress").map(mapHelperRequest)))
+      .catch(() => { });
+    api.getAvailableRequests().then(list => setAvailableReqs(list.map(mapHelperRequest))).catch(() => { });
+    api.getMyResponses().then(list => {
+      const map: Record<string, ResponseStatus> = {};
+      list.forEach(r => { map[r.requestId] = r.status; });
+      setResponseStatuses(map);
+    }).catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    if (cancelledRequestId) {
+      setActiveReqs(prev => prev.filter(r => r.id !== cancelledRequestId));
+    }
+  }, [cancelledRequestId]);
+
+  useEffect(() => {
+    if (declinedRequestId) {
+      setResponseStatuses(prev => ({ ...prev, [declinedRequestId]: "DECLINED" }));
+    }
+  }, [declinedRequestId]);
+
+  useEffect(() => {
+    if (acceptedRequestId) {
+      setResponseStatuses(prev => ({ ...prev, [acceptedRequestId]: "ACCEPTED" }));
+      // убрать из доступных, добавить в активные
+      setAvailableReqs(prev => prev.filter(r => r.id !== acceptedRequestId));
+      api.getAssignedRequests()
+        .then(list => setActiveReqs(list.filter((r: any) => r.status === "in_progress").map(mapHelperRequest)))
+        .catch(() => {});
+    }
+  }, [acceptedRequestId]);
+
+  useEffect(() => {
+    if (activeReqsVersion && activeReqsVersion > 0) {
+      api.getAssignedRequests()
+        .then(list => setActiveReqs(list.filter((r: any) => r.status === "in_progress").map(mapHelperRequest)))
+        .catch(() => { });
+    }
+  }, [activeReqsVersion]);
+
+  const handleChat = async (authorId: string) => {
+    try {
+      const chat = await api.openChat(authorId);
+      onOpenChat(chat);
+    } catch (e) {
+      console.error("[CHAT] failed to open chat", e);
+    }
+  };
+
+  const handleAccept = async (id: string) => {
+    setLoadingRespondId(id);
+    try {
+      await api.respondToRequest(id);
+      setResponseStatuses(prev => ({ ...prev, [id]: "PENDING" }));
+    } catch (e) {
+      console.error("[RESPOND] failed", e);
+    } finally {
+      setLoadingRespondId(null);
+    }
+  };
+
+  const handleComplete = (id: string) => setCompletingId(id);
+  const handleSubmitCompletion = async (priceOverride?: number) => {
+    if (!completingId) return;
+    try {
+      await api.updateRequestStatus(completingId, "completed", priceOverride);
+      const active = await api.getAssignedRequests();
+      setActiveReqs(active.filter((r: any) => r.status === "in_progress").map(mapHelperRequest));
+    } catch (e) {
+      console.error("[COMPLETE] failed", e);
+    }
     setCompletingId(null);
   };
 
@@ -1201,7 +1552,7 @@ function HelperDashboard({ user }: { user: { firstName: string } }) {
     <div className="space-y-4">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4">
         <p className="font-bold text-gray-800 text-sm">Добро пожаловать, {user.firstName}!</p>
-        <p className="text-xs text-gray-500 mt-0.5">Сегодня в вашем регионе поступило <span className="font-semibold text-gray-700">12</span> новых запросов. Готовы помочь?</p>
+        <p className="text-xs text-gray-500 mt-0.5">Доступных заявок по вашим категориям: <span className="font-semibold text-gray-700">{availableReqs.length}</span>. Готовы помочь?</p>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1215,100 +1566,169 @@ function HelperDashboard({ user }: { user: { firstName: string } }) {
         )}
       </div>
 
+      {/* Doc warning for volunteer */}
+      {!allApproved && (
+        <div className="rounded-2xl px-5 py-4 flex items-start gap-3" style={{ background: "#FFFBEB", border: "1px solid #FDE68A" }}>
+          <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="#D97706" strokeWidth="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" strokeWidth="2" /><line x1="12" y1="17" x2="12.01" y2="17" strokeWidth="3" /></svg>
+          <div>
+            <p className="text-xs font-bold" style={{ color: "#92400E" }}>Для отклика на заявки необходима верификация</p>
+            {missingDocs.length > 0 && (
+              <>
+                <p className="text-[11px] mt-0.5" style={{ color: "#B45309" }}>Загрузите и получите одобрение для:</p>
+                <ul className="mt-1 space-y-0.5">
+                  {missingDocs.map(d => (
+                    <li key={d.key} className="text-[11px] flex items-center gap-1.5" style={{ color: "#B45309" }}>
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#D97706" }} />{d.label}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {pendingDocs.length > 0 && missingDocs.length === 0 && (
+              <p className="text-[11px] mt-0.5" style={{ color: "#B45309" }}>
+                Документы загружены и ожидают проверки администратором.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
           <h3 className="font-bold text-sm text-gray-800">{t("dashboard.availableRequests")}</h3>
           <div className="relative">
             <button onClick={() => setFilterOpen(v => !v)}
               className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-800 transition-colors">
-              {t("dashboard.filterByDistance")} <ChevronDown className="w-3.5 h-3.5" />
+              {filterType === "distance" ? t("dashboard.filterByDistance") :
+                filterType === "price" ? "По цене" :
+                  filterType === "date" ? "По дате" :
+                    filterType === "accepted" ? "Отклик принято" : "Отклик отклонено"} <ChevronDown className="w-3.5 h-3.5" />
             </button>
             {filterOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[140px] overflow-hidden">
-                {["По расстоянию", "По дате", "По цене"].map(opt => (
-                  <button key={opt} onClick={() => setFilterOpen(false)}
-                    className="block w-full text-left px-4 py-2 text-xs hover:bg-gray-50 text-gray-700">{opt}</button>
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[150px] overflow-hidden">
+                {[
+                  { k: "date", label: "По дате" },
+                  { k: "distance", label: "По расстоянию" },
+                  { k: "price", label: "По цене" },
+                  { k: "accepted", label: "Отклик принято" },
+                  { k: "declined", label: "Отклик отклонено" }
+                ].map(opt => (
+                  <button key={opt.k} onClick={() => { setFilterType(opt.k as any); setFilterOpen(false) }}
+                    className={`block w-full text-left px-4 py-2 text-xs hover:bg-gray-50 ${filterType === opt.k ? "font-bold text-blue-600" : "text-gray-700"}`}>
+                    {opt.label}
+                  </button>
                 ))}
               </div>
             )}
           </div>
         </div>
-        <HelperAvailableTable reqs={AVAILABLE_REQS} />
+        <HelperAvailableTable reqs={sortedAndFilteredAvailableReqs} onChat={handleChat} onAccept={handleAccept} responseStatuses={responseStatuses} loadingRespondId={loadingRespondId} canRespond={allApproved} />
       </div>
 
       {completingId !== null && (
-        <CompletionModal onClose={() => setCompletingId(null)} onSubmit={handleSubmitCompletion} />
+        <CompletionModal onClose={() => setCompletingId(null)} onSubmit={(price) => handleSubmitCompletion(price)} />
       )}
     </div>
   );
 }
 
 /* ─────────────── chat detail ─────────────── */
-const MOCK_REPLIES = [
-  "Спасибо за сообщение! Скоро отвечу подробнее.",
-  "Хорошо, принял к сведению!",
-  "Понял вас, сейчас разберусь.",
-  "Отлично, договорились!",
-  "Спасибо! Буду ждать уточнений.",
-  "Всё понятно, приступаю к выполнению.",
-];
-
-function ChatDetail({ conv }: { conv: Conversation }) {
+function ChatDetail({ chat, myId }: { chat: Chat; myId: string }) {
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>(CHAT_MESSAGES[conv.id] ?? []);
+  const [messages, setMessages] = useState<Message[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const stompRef = useRef<Client | null>(null);
+
+  const other = chat.participants.find(p => p.id !== myId) ?? chat.participants[0];
+
+  useEffect(() => {
+    api.getMessages(chat.id).then(setMessages).catch(() => { });
+  }, [chat.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    const wsUrl = api.getWsUrl();
+    if (!wsUrl) return;
+    const client = new Client({
+      brokerURL: wsUrl,
+      onConnect: () => {
+        client.subscribe(`/topic/chat/${chat.id}`, (frame) => {
+          const msg: Message = JSON.parse(frame.body);
+          if (msg.senderId !== myId) {
+            setMessages(prev => [...prev, msg]);
+          }
+        });
+      },
+    });
+    client.activate();
+    stompRef.current = client;
+    return () => { client.deactivate(); };
+  }, [chat.id, myId]);
+
   const handleSend = () => {
     const text = input.trim();
     if (!text) return;
-    const now = new Date();
-    const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    setMessages(m => [...m, { id: Date.now(), from: "me", text, time }]);
     setInput("");
+    const now = new Date().toISOString();
+    const localMsg: Message = { id: Date.now(), chatId: chat.id, senderId: myId, text, timestamp: now };
+    setMessages(prev => [...prev, localMsg]);
+    stompRef.current?.publish({
+      destination: `/app/chat_${chat.id}`,
+      body: JSON.stringify({ senderId: myId, text }),
+    });
+  };
 
-    // Simulate auto-reply after 2 seconds (mock WebSocket behaviour)
-    if (!conv.isSystem) {
-      setTimeout(() => {
-        const replyNow = new Date();
-        const replyTime = `${String(replyNow.getHours()).padStart(2, "0")}:${String(replyNow.getMinutes()).padStart(2, "0")}`;
-        const replyText = MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)];
-        setMessages(m => [...m, { id: Date.now(), from: "other", text: replyText, time: replyTime }]);
-      }, 2000);
-    }
+  const fmtTime = (iso: string) => {
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100">
-        <Avatar conv={conv} size={40} />
-        <p className="font-bold text-gray-900 text-sm">{conv.name}</p>
+        {other?.avatarUrl
+          ? <img src={other.avatarUrl} alt={other.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
+          : <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+            style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+            {(other?.name ?? "?").substring(0, 1).toUpperCase()}
+          </div>
+        }
+        <p className="font-bold text-gray-900 text-sm">{other?.name ?? "Пользователь"}</p>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-gray-50">
-        <div className="text-center">
-          <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">22 марта</span>
-        </div>
-        {messages.map(msg => (
-          <div key={msg.id} className={`flex ${msg.from === "me" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[65%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed relative ${msg.from === "me"
-              ? "text-white rounded-tr-sm"
-              : "text-gray-800 rounded-tl-sm border border-gray-200"
-              }`}
-              style={msg.from === "me" ? { background: BLUE } : { background: "white" }}>
-              {msg.text.split("\n").map((line, i) => (
-                <span key={i}>{line}{i < msg.text.split("\n").length - 1 && <br />}</span>
-              ))}
-              <span className={`text-[10px] ml-2 ${msg.from === "me" ? "text-blue-100" : "text-gray-400"} inline-flex items-center gap-0.5`}>
-                {msg.time}
-                {msg.from === "me" && <CheckCheck className="w-3 h-3 text-blue-200" />}
-              </span>
+        {messages.map(msg => {
+          const isMe = msg.senderId === myId;
+          return (
+            <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+              <div className={`max-w-[65%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${isMe ? "text-white rounded-tr-sm" : "text-gray-800 rounded-tl-sm border border-gray-200"
+                }`}
+                style={isMe ? { background: BLUE } : { background: "white" }}>
+                {msg.text.split("\n").map((line, i) => (
+                  <span key={i}>{line}{i < msg.text.split("\n").length - 1 && <br />}</span>
+                ))}
+                <span className={`text-[10px] ml-2 ${isMe ? "text-blue-100" : "text-gray-400"} inline-flex items-center gap-0.5`}>
+                  {fmtTime(msg.timestamp)}
+                  {isMe && <CheckCheck className="w-3 h-3 text-blue-200" />}
+                </span>
+              </div>
+              {(msg as any).flagged && (
+                <div className="flex items-center gap-1 mt-0.5 px-1" style={{ maxWidth: "65%" }}>
+                  <svg className="w-3 h-3 shrink-0" fill="none" stroke="#F59E0B" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" strokeWidth="3" />
+                  </svg>
+                  <span className="text-[10px] leading-tight" style={{ color: "#B45309" }}>
+                    Это сообщение может содержать подозрительный контент
+                  </span>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
@@ -1330,58 +1750,61 @@ function ChatDetail({ conv }: { conv: Conversation }) {
 }
 
 /* ─────────────── messages list ─────────────── */
-type MsgFilter = "all" | "new" | "read" | "important";
+function MessagesContent({ onOpenChat, myId }: { onOpenChat: (chat: Chat) => void; myId: string }) {
+  const [chats, setChats] = useState<Chat[]>([]);
 
-function MessagesContent({ onOpenChat }: { onOpenChat: (id: number) => void }) {
-  const [filter, setFilter] = useState<MsgFilter>("all");
-
-  const filterTabs: { key: MsgFilter; label: string }[] = [
-    { key: "all", label: "Все" },
-    { key: "new", label: "Новые" },
-    { key: "read", label: "Прочитанные" },
-    { key: "important", label: "Важные" },
-  ];
-
-  const filtered = CONVERSATIONS.filter(c => {
-    if (filter === "new") return c.unread;
-    if (filter === "read") return c.read;
-    return true;
-  });
+  useEffect(() => {
+    api.getChats().then(setChats).catch(() => { });
+  }, []);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="flex border-b border-gray-100 px-2">
-        {filterTabs.map(tab => (
-          <button key={tab.key} onClick={() => setFilter(tab.key)}
-            className="px-4 py-3.5 text-xs font-semibold transition-colors whitespace-nowrap border-b-2 -mb-px"
-            style={filter === tab.key
-              ? { color: BLUE, borderColor: BLUE }
-              : { color: "#6b7280", borderColor: "transparent" }}>
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="divide-y divide-gray-100">
-        {filtered.map(conv => (
-          <button key={conv.id} onClick={() => onOpenChat(conv.id)}
-            className="w-full flex items-start gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left">
-            <Avatar conv={conv} size={44} />
-            <div className="flex-1 min-w-0">
-              <p className={`text-sm leading-tight ${conv.unread ? "font-bold text-gray-900" : "font-semibold text-gray-800"}`}>
-                {conv.name}
-              </p>
-              <p className="text-xs text-gray-400 leading-snug mt-0.5 line-clamp-2 whitespace-pre-line">
-                {conv.preview}
-              </p>
-            </div>
-            <div className="shrink-0 flex flex-col items-end gap-1 pt-0.5">
-              <span className="text-xs text-gray-400 whitespace-nowrap">{conv.time}</span>
-              {conv.read && <CheckCheck className="w-3.5 h-3.5" style={{ color: BLUE }} />}
-            </div>
-          </button>
-        ))}
-      </div>
+      {chats.length === 0 ? (
+        <p className="px-5 py-10 text-xs text-gray-400 text-center">Нет диалогов</p>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {chats.map(chat => {
+            const other = chat.participants.find(p => p.id !== myId) ?? chat.participants[0];
+            const name = other?.name || "Пользователь";
+            const avatarUrl = other?.avatarUrl ?? null;
+            const last = (chat as any).lastMessage;
+            const lastText = last?.text ?? null;
+            const lastTime = last?.timestamp ? (() => {
+              const d = new Date(last.timestamp);
+              const now = new Date();
+              const sameDay = d.toDateString() === now.toDateString();
+              return sameDay
+                ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+                : d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+            })() : null;
+            const isMyLast = last?.senderId === myId;
+            return (
+              <button key={chat.id} onClick={() => onOpenChat(chat)}
+                className="w-full flex items-start gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left">
+                {avatarUrl
+                  ? <img src={avatarUrl} alt={name} className="w-11 h-11 rounded-full object-cover shrink-0" />
+                  : <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                    style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+                    {name.substring(0, 1).toUpperCase()}
+                  </div>
+                }
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-gray-800 leading-tight truncate">{name}</p>
+                    {lastTime && <span className="text-[10px] text-gray-400 shrink-0">{lastTime}</span>}
+                  </div>
+                  {lastText && (
+                    <p className="text-xs text-gray-400 leading-tight truncate mt-0.5">
+                      {isMyLast && <span className="text-gray-500">Вы: </span>}
+                      {lastText}
+                    </p>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1391,12 +1814,14 @@ function RequestsTable({
   requests,
   onCancel,
   emptyText,
+  helperLabel = "Помощник",
 }: {
   requests: ServiceRequest[];
-  onCancel?: (id: number) => void;
+  onCancel?: (id: string) => void;
   emptyText: string;
+  helperLabel?: string;
 }) {
-  const COLS = ["Наименование", "Дата регистрации", "Дата выполнения услуг", "Цена", "Помощник"];
+  const COLS = ["Наименование", "Дата регистрации", "Дата выполнения услуг", "Цена", helperLabel];
 
   return (
     <div className="overflow-x-auto px-4 pt-3 pb-1">
@@ -1481,17 +1906,24 @@ function RequestsTable({
   );
 }
 
-function MyRequestsContent({ userId }: { userId: number }) {
-  const [requests, setRequests] = useState<ServiceRequest[]>(() => loadRequests(userId));
+function MyRequestsContent({ userId: _userId }: { userId: string }) {
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+
+  useEffect(() => {
+    api.getMyRequests().then(list => setRequests(list.map(mapBackendRequest))).catch(() => { });
+  }, []);
 
   const active = requests.filter(r => (r.status ?? "active") === "active");
   const completed = requests.filter(r => r.status === "completed");
   const cancelled = requests.filter(r => r.status === "cancelled");
 
-  const handleCancel = (id: number) => {
-    const updated = requests.map(r => r.id === id ? { ...r, status: "cancelled" as RequestStatus } : r);
-    setRequests(updated);
-    saveRequests(userId, updated);
+  const handleCancel = async (id: string) => {
+    try {
+      await api.updateRequestStatus(id, "cancelled");
+      setRequests(prev => prev.map(r => r.id === id ? { ...r, status: "cancelled" as RequestStatus } : r));
+    } catch (e) {
+      console.error("cancel failed:", e);
+    }
   };
 
   const Section = ({
@@ -1526,30 +1958,108 @@ function MyRequestsContent({ userId }: { userId: number }) {
   );
 }
 
-/* ─────────────── find helpers tab ─────────────── */
-interface MockHelper {
-  id: number; name: string; categoryKey: string; categoryLabel: string;
-  rating: number; description: string; city: "almaty" | "astana";
+function mapAssignedRequest(r: any): ServiceRequest {
+  return { ...mapBackendRequest(r), helper: r.authorName ?? "" };
 }
 
-const MOCK_HELPERS: MockHelper[] = [
-  { id: 1, name: "Умбеталиев Али", categoryKey: "household", categoryLabel: "Бытовая помощь", rating: 4.9, city: "astana", description: "Помогаю пожилым людям с покупками и бытовыми задачами уже 3 года" },
-  { id: 2, name: "Алишева Альмира", categoryKey: "medical", categoryLabel: "Медицинская помощь", rating: 4.9, city: "astana", description: "Медсестра с опытом, помогу купить лекарства, сходить к врачу" },
-  { id: 3, name: "Аймердинов Амир", categoryKey: "homework", categoryLabel: "Домашние работы", rating: 4.8, city: "almaty", description: "Опыт работы 4 года, аккуратно выполню задачи по дому" },
-  { id: 4, name: "Куаныш Дастан", categoryKey: "shopping", categoryLabel: "Покупки", rating: 4.8, city: "astana", description: "Помогаю пожилым людям с покупками продуктов и хозтоваров" },
-  { id: 5, name: "Аденова Асем", categoryKey: "escort", categoryLabel: "Сопровождение", rating: 4.8, city: "almaty", description: "Могу сопровождать на прогулки и визиты к врачу" },
-  { id: 6, name: "Береке Мадина", categoryKey: "household", categoryLabel: "Бытовая помощь", rating: 4.7, city: "almaty", description: "Ответственная, аккуратная, готовлю домашнюю еду" },
-  { id: 7, name: "Салимова Алиша", categoryKey: "medical", categoryLabel: "Медицинская помощь", rating: 4.8, city: "astana", description: "По образованию медсестра, помогу с посещением больницы" },
-  { id: 8, name: "Бакыт Диас", categoryKey: "household", categoryLabel: "Бытовая помощь", rating: 4.8, city: "almaty", description: "Помогаю по дому: уборка, приготовление еды, поддержание чистоты" },
-  { id: 9, name: "Алем Асыл", categoryKey: "escort", categoryLabel: "Сопровождение", rating: 4.9, city: "almaty", description: "Сопровождаю в больницу, на прогулки и по делам. Очень внимателен к деталям." },
-  { id: 10, name: "Шаймердинов Бегарыс", categoryKey: "homework", categoryLabel: "Домашние работы", rating: 4.9, city: "astana", description: "Опыт работы 3 года, занимаюсь ремонтом и хозяйственными делами" },
-  { id: 11, name: "Аймердинов Амир", categoryKey: "shopping", categoryLabel: "Покупки", rating: 4.8, city: "almaty", description: "Помогу с покупкой продуктов и лекарств, всё привезу вовремя." },
-  { id: 12, name: "Айбергенова Асылай", categoryKey: "household", categoryLabel: "Бытовая помощь", rating: 4.8, city: "almaty", description: "Помогаю пожилым людям с покупками и хозтоваров" },
-];
+function mapBackendNotification(n: { id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; actorId: string | null; responseId: string | null; status: string | null; createdAt: string }): NotifItem {
+  const d = new Date(n.createdAt);
+  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const base = { id: n.id, time, timestamp: n.createdAt, service: n.requestTitle, requestId: n.requestId, actorId: n.actorId ?? undefined };
+  const s = n.status; // "ACCEPTED" | "DECLINED" | "REVIEWED" | null
+
+  if (n.type === "NEW_RESPONSE") {
+    // если статус уже проставлен — responseId не отдаём (кнопки не показываем)
+    const resolved = s === "ACCEPTED" || s === "DECLINED";
+    return {
+      ...base, type: "new_response", helperName: n.actorName ?? "",
+      responseId: resolved ? undefined : (n.responseId ?? undefined),
+      responseStatus: s === "ACCEPTED" ? "accepted" : s === "DECLINED" ? "declined" : undefined,
+    };
+  }
+  if (n.type === "REQUEST_ACCEPTED")
+    return { ...base, type: "accepted", helperName: n.actorName ?? "" };
+  if (n.type === "RESPONSE_ACCEPTED")
+    return { ...base, type: "response_accepted", helperName: n.actorName ?? "" };
+  if (n.type === "RESPONSE_DECLINED")
+    return { ...base, type: "response_declined", helperName: n.actorName ?? "" };
+  if (n.type === "REQUEST_CANCELLED")
+    return { ...base, type: "cancelled" };
+  if (n.type === "REQUEST_COMPLETED")
+    return {
+      ...base, type: "request_completed", helperName: n.actorName ?? "",
+      inviteReplyStatus: s === "REVIEWED" ? "accepted" : undefined, // "accepted" = уже оценено
+    };
+  if (n.type === "NEW_INVITE")
+    return {
+      ...base, type: "new_invite", helperName: n.actorName ?? "",
+      inviteReplyStatus: s === "ACCEPTED" ? "accepted" : s === "DECLINED" ? "declined" : undefined,
+    };
+  if (n.type === "INVITE_ACCEPTED")
+    return { ...base, type: "invite_accepted", helperName: n.actorName ?? "" };
+  if (n.type === "INVITE_DECLINED")
+    return { ...base, type: "invite_declined", helperName: n.actorName ?? "" };
+  if (n.type === "DOC_REVIEWED")
+    return { ...base, type: "doc_reviewed", helperName: n.actorName ?? "", service: n.requestTitle };
+  return { ...base, type: "accepted" };
+}
+
+function MyVolunteerRequestsContent({ cancelledRequestId }: { cancelledRequestId?: string | null }) {
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+
+  useEffect(() => {
+    api.getAssignedRequests().then(list => setRequests(list.map(mapAssignedRequest))).catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    if (cancelledRequestId) {
+      api.getAssignedRequests()
+        .then(list => setRequests(list.map(mapAssignedRequest)))
+        .catch(() => { });
+    }
+  }, [cancelledRequestId]);
+
+  const active = requests.filter(r => (r.status ?? "active") === "active");
+  const completed = requests.filter(r => r.status === "completed");
+  const cancelled = requests.filter(r => r.status === "cancelled");
+
+  const Section = ({ title, color, reqs }: { title: string; color: string; reqs: ServiceRequest[] }) => (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100">
+        <h3 className="font-bold text-sm" style={{ color }}>{title}</h3>
+      </div>
+      <RequestsTable requests={reqs} emptyText="Нет заявок" helperLabel="Заказчик" />
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <Section title="Активные заявки" color={GREEN} reqs={active} />
+      <Section title="Прошлые заявки" color="#374151" reqs={completed} />
+      <Section title="Отменённые заявки" color="#EF4444" reqs={cancelled} />
+    </div>
+  );
+}
+
+/* ─────────────── find helpers tab ─────────────── */
+interface RealHelper {
+  id: string;
+  name: string;
+  firstName?: string;
+  lastName?: string;
+  categories: string[];
+  rating: number;
+  aboutMe: string;
+  avatarUrl?: string;
+  city?: string;
+}
 
 const AVATAR_BG = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16"];
 
-function HelperAvatar({ name, size = 40, colorId }: { name: string; size?: number; colorId: number }) {
+function HelperAvatar({ name, size = 40, colorId, avatarUrl }: { name: string; size?: number; colorId: number; avatarUrl?: string }) {
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt={name} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />;
+  }
   const bg = AVATAR_BG[colorId % AVATAR_BG.length];
   const parts = name.trim().split(/\s+/);
   const initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
@@ -1574,26 +2084,39 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
-function SelectRequestModal({ requests, onSelect, onClose }: {
+function SelectRequestModal({ requests, helper, onSelect, onNewRequest, onClose }: {
   requests: ServiceRequest[];
-  onSelect: () => void;
+  helper: RealHelper;
+  onSelect: (req: ServiceRequest) => void;
+  onNewRequest: () => void;
   onClose: () => void;
 }) {
+  const colorId = Math.abs(helper.id.charCodeAt(0));
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" style={{ maxHeight: "85vh" }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
-          <h3 className="font-bold text-gray-900 text-sm">Выберите заявку</h3>
+          <div>
+            <h3 className="font-bold text-gray-900 text-sm">Пригласить помощника</h3>
+            <p className="text-[11px] text-gray-400 mt-0.5">Выберите заявку для <span className="font-semibold">{helper.name}</span></p>
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors text-xl font-light">✕</button>
         </div>
-        <div className="overflow-y-auto p-4 space-y-3" style={{ maxHeight: "calc(85vh - 72px)" }}>
+        <div className="overflow-y-auto p-4 space-y-3" style={{ maxHeight: "calc(85vh - 120px)" }}>
+          {requests.length === 0 && (
+            <p className="text-xs text-gray-400 text-center py-4">Нет открытых заявок без помощника</p>
+          )}
           {requests.map(req => (
-            <div key={req.id} className="border border-gray-200 rounded-xl p-4">
-              <p className="font-semibold text-gray-800 text-xs mb-1">Заявка #{req.id}</p>
-              <p className="text-[11px] text-gray-500">Категория: {req.serviceLabel}</p>
+            <div key={req.id} className="border border-gray-200 rounded-xl p-4 hover:border-blue-300 transition-colors">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg overflow-hidden bg-gray-50 shrink-0 border border-gray-100">
+                  <img src={SERVICE_IMG[req.serviceKey] ?? imgHousehold} alt={req.serviceLabel} className="w-full h-full object-contain p-1" />
+                </div>
+                <p className="font-semibold text-gray-800 text-xs">{req.serviceLabel}</p>
+              </div>
               <p className="text-[11px] text-gray-500">Адрес: {req.address.split(",")[0]}</p>
-              <p className="text-[11px] text-gray-500 mb-3">Дата: {req.dateExecution}</p>
-              <button onClick={onSelect}
+              <p className="text-[11px] text-gray-500 mb-3">Дата: {req.dateExecution || "—"}</p>
+              <button onClick={() => onSelect(req)}
                 className="w-full py-2 text-xs font-bold text-white rounded-lg transition-opacity hover:opacity-90"
                 style={{ background: BLUE }}>
                 Выбрать эту заявку
@@ -1601,71 +2124,60 @@ function SelectRequestModal({ requests, onSelect, onClose }: {
             </div>
           ))}
         </div>
+        <div className="px-4 pb-4 shrink-0 border-t border-gray-100 pt-3">
+          <button onClick={onNewRequest}
+            className="w-full py-2.5 text-xs font-bold rounded-xl border-2 border-dashed transition-colors hover:border-blue-400 hover:text-blue-600"
+            style={{ borderColor: "#BFDBFE", color: BLUE }}>
+            + Новая заявка
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function ConfirmHelperModal({ helper, onClose, onConfirm, mode = "select" }: {
-  helper: MockHelper;
+function ConfirmInviteModal({ helper, request, onClose, onConfirm, loading }: {
+  helper: RealHelper;
+  request: ServiceRequest;
   onClose: () => void;
   onConfirm: () => void;
-  mode?: "select" | "response";
+  loading: boolean;
 }) {
-  const [accepted, setAccepted] = useState(false);
-
-  if (accepted) {
-    return (
-      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-          <div className="flex justify-end px-4 pt-4">
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl font-light">✕</button>
-          </div>
-          <div className="px-6 pb-8 flex flex-col items-center text-center">
-            <HelperAvatar name={helper.name} size={64} colorId={helper.id} />
-            <p className="font-bold text-gray-900 text-sm mt-3 mb-0.5">{helper.name}</p>
-            <p className="text-xs text-gray-400 mb-1">{helper.categoryLabel}</p>
-            <StarRating rating={helper.rating} />
-            <p className="text-sm font-bold mt-4" style={{ color: GREEN }}>Ваша заявка принята</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  const colorId = Math.abs(helper.id.charCodeAt(0));
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900 text-sm">Подтвердить выбор помощника</h3>
+          <h3 className="font-bold text-gray-900 text-sm">Подтвердить приглашение</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl font-light">✕</button>
         </div>
         <div className="p-5">
           <div className="flex items-center gap-4 mb-4">
-            <HelperAvatar name={helper.name} size={60} colorId={helper.id} />
+            <HelperAvatar name={helper.name} size={56} colorId={colorId} avatarUrl={helper.avatarUrl} />
             <div>
               <p className="font-bold text-gray-900 text-sm">{helper.name}</p>
-              <p className="text-xs text-gray-400 mb-1">{helper.categoryLabel}</p>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {helper.categories.slice(0, 2).map(c => (
+                  <span key={c} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "#EFF6FF", color: BLUE }}>{CATEGORY_META[c]?.label ?? c}</span>
+                ))}
+              </div>
               <StarRating rating={helper.rating} />
             </div>
           </div>
-          {mode === "response" ? (
-            <p className="text-xs text-gray-600 mb-5">
-              <span className="font-semibold">{helper.name}</span> откликнулся на вашу заявку.{" "}
-              <span className="font-semibold">{helper.categoryLabel}:</span> {helper.description}
-            </p>
-          ) : (
-            <p className="text-xs text-gray-600 mb-5">Вы уверены, что хотите выбрать этого помощника для выполнения заявки?</p>
-          )}
+          <div className="bg-gray-50 rounded-xl px-4 py-3 mb-5 border border-gray-100">
+            <p className="text-[11px] text-gray-500 mb-1">Заявка:</p>
+            <p className="text-xs font-semibold text-gray-800">{request.serviceLabel}</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">{request.address.split(",")[0]}</p>
+          </div>
           <div className="flex gap-3">
-            <button onClick={onClose}
-              className="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
-              {mode === "response" ? "Отклонить" : "Отмена"}
+            <button onClick={onClose} disabled={loading}
+              className="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
+              Отмена
             </button>
-            <button onClick={() => { if (mode === "response") { setAccepted(true); } else { onConfirm(); } }}
-              className="flex-1 py-2.5 text-xs font-bold text-white rounded-xl transition-opacity hover:opacity-90"
+            <button onClick={onConfirm} disabled={loading}
+              className="flex-1 py-2.5 text-xs font-bold text-white rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50"
               style={{ background: BLUE }}>
-              Подтвердить
+              {loading ? "Отправляем..." : "Пригласить"}
             </button>
           </div>
         </div>
@@ -1674,195 +2186,360 @@ function ConfirmHelperModal({ helper, onClose, onConfirm, mode = "select" }: {
   );
 }
 
-function HelperRequestForm({ helper, onBack }: { helper: MockHelper; onBack: () => void }) {
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
-  const [comment, setComment] = useState("");
+/* ─────────────── helper profile modal ─────────────── */
+function HelperProfileModal({ helper, onClose, onSelect, colorId }: {
+  helper: RealHelper;
+  onClose: () => void;
+  onSelect: () => void;
+  colorId: number;
+}) {
+  const [reviews, setReviews] = useState<{ id: string; authorId: string; comment: string; rating: number; createdAt: string }[]>([]);
+  const [showAll, setShowAll] = useState(false);
+  const [loadingReviews, setLoadingReviews] = useState(true);
+
+  useEffect(() => {
+    api.getReviewsByUserId(helper.id)
+      .then((list: any[]) => setReviews(list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())))
+      .catch(() => {})
+      .finally(() => setLoadingReviews(false));
+  }, [helper.id]);
+
+  const displayed = showAll ? reviews : reviews.slice(0, 5);
+  const avgRating = reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : helper.rating;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden"
+        style={{ maxHeight: "88vh" }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+          <h3 className="font-bold text-gray-900 text-base">Профиль помощника</h3>
+          <button onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+          {/* Avatar + name + rating */}
+          <div className="flex items-center gap-4">
+            <HelperAvatar name={helper.name} size={64} colorId={colorId} avatarUrl={helper.avatarUrl} />
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-gray-900 text-base leading-tight">{helper.name}</p>
+              <div className="flex flex-wrap gap-1 mt-1.5 mb-2">
+                {helper.categories.map(c => (
+                  <span key={c} className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                    style={{ background: "#EFF6FF", color: BLUE }}>{CATEGORY_META[c]?.label ?? c}</span>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="flex gap-0.5">
+                  {[1,2,3,4,5].map(i => (
+                    <svg key={i} className="w-4 h-4" viewBox="0 0 24 24" fill={i <= Math.round(avgRating) ? "#F59E0B" : "#E5E7EB"}>
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                    </svg>
+                  ))}
+                </div>
+                <span className="text-sm font-bold text-gray-700">{avgRating.toFixed(1)}</span>
+                <span className="text-xs text-gray-400">({reviews.length} отзывов)</span>
+              </div>
+            </div>
+          </div>
+
+          {/* About */}
+          {helper.aboutMe && (
+            <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+              <p className="text-[11px] font-semibold text-gray-500 mb-1">О себе</p>
+              <p className="text-xs text-gray-700 leading-relaxed">{helper.aboutMe}</p>
+            </div>
+          )}
+
+          {/* Reviews */}
+          <div>
+            <p className="text-xs font-bold text-gray-800 mb-3">
+              Отзывы {reviews.length > 0 && <span className="text-gray-400 font-normal">({reviews.length})</span>}
+            </p>
+            {loadingReviews ? (
+              <p className="text-xs text-gray-400 text-center py-4">Загрузка...</p>
+            ) : reviews.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-4">Пока нет отзывов</p>
+            ) : (
+              <div className="space-y-3">
+                {displayed.map(r => (
+                  <div key={r.id} className="border border-gray-100 rounded-xl px-4 py-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex gap-0.5">
+                        {[1,2,3,4,5].map(i => (
+                          <svg key={i} className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={i <= r.rating ? "#F59E0B" : "#E5E7EB"}>
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                          </svg>
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-gray-400">
+                        {new Date(r.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
+                      </span>
+                    </div>
+                    {r.comment && <p className="text-xs text-gray-600 leading-relaxed">{r.comment}</p>}
+                  </div>
+                ))}
+                {!showAll && reviews.length > 5 && (
+                  <button onClick={() => setShowAll(true)}
+                    className="w-full py-2.5 text-xs font-semibold rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                    Посмотреть все отзывы ({reviews.length - 5} ещё)
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 shrink-0">
+          <button onClick={() => { onSelect(); onClose(); }}
+            className="w-full py-3 text-white text-sm font-bold rounded-xl transition-opacity hover:opacity-90"
+            style={{ background: BLUE }}>
+            Выбрать помощника
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── new request form (inline inside modal) ─────────────── */
+function NewRequestForm({ helper, onBack, onSent }: {
+  helper: RealHelper;
+  onBack: () => void;
+  onSent: (requestId: string) => void;
+}) {
+  const services = [
+    { key: "household", label: "Бытовые услуги" }, { key: "medical", label: "Медицинская помощь" },
+    { key: "escort", label: "Сопровождение" }, { key: "homework", label: "Домашние работы" },
+    { key: "shopping", label: "Покупки" },
+  ];
+  const [serviceKey, setServiceKey] = useState(helper.categories[0] ?? "household");
+  const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [date, setDate] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
-  const [showAddressPicker, setShowAddressPicker] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [sending, setSending] = useState(false);
 
   const validate = () => {
     const e: Record<string, string> = {};
+    if (!description.trim()) e.description = "Обязательное поле";
     if (!date) e.date = "Обязательное поле";
-    else if (!isValidDate(date)) e.date = "Такой даты не существует";
-    else if (!isFutureDate(date)) e.date = "Дата не может быть в прошлом";
-    if (!time) e.time = "Обязательное поле";
-    if (!price) e.price = "Обязательное поле";
-    if (!address) e.address = "Обязательное поле";
+    else if (!isValidDate(date)) e.date = "Неверная дата";
+    else if (!isFutureDate(date)) e.date = "Дата в прошлом";
+    if (!address.trim()) e.address = "Обязательное поле";
     return e;
   };
 
-  if (submitted) {
-    return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center py-16 px-6">
-        <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "#DCFCE7" }}>
-          <svg className="w-8 h-8" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
-        </div>
-        <p className="font-bold text-gray-900 text-base mb-1">Заявка отправлена!</p>
-        <p className="text-xs text-gray-500 mb-6 text-center max-w-xs">
-          Мы уведомим вас, когда <span className="font-semibold">{helper.name}</span> ответит на вашу заявку.
-        </p>
-        <button onClick={onBack}
-          className="px-6 py-2.5 text-xs font-bold text-white rounded-xl transition-opacity hover:opacity-90"
-          style={{ background: BLUE }}>
-          Вернуться к поиску
-        </button>
-      </div>
-    );
-  }
+  const handleSend = async () => {
+    const errs = validate();
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+    setSending(true);
+    try {
+      const svc = services.find(s => s.key === serviceKey);
+      const created = await api.createRequest({
+        title: svc?.label ?? serviceKey,
+        description,
+        category: serviceKey,
+        location: address,
+        price: price ? parseInt(price, 10) : undefined,
+        scheduledDate: date,
+      });
+      await api.inviteHelper((created as any).id, helper.id);
+      onSent((created as any).id);
+    } catch (e) {
+      console.error("[NEW_REQUEST+INVITE] failed", e);
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl px-5 py-3 flex items-center gap-2" style={{ background: "#F0FDF4", border: "1px solid #BBF7D0" }}>
-        <svg className="w-4 h-4 shrink-0" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
-        <p className="text-xs font-semibold" style={{ color: GREEN }}>
-          <span className="font-bold">{helper.name}</span> выбран для выполнения заявки
-        </p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-        <div className="flex items-center gap-4 mb-3">
-          <HelperAvatar name={helper.name} size={56} colorId={helper.id} />
-          <div>
-            <p className="font-bold text-gray-900 text-sm">{helper.name}</p>
-            <p className="text-xs text-gray-400 mb-1">{helper.categoryLabel}</p>
-            <StarRating rating={helper.rating} />
-          </div>
-        </div>
-        <p className="text-xs text-gray-500">{helper.description}</p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
-        <h3 className="font-bold text-gray-800 text-sm">Дата и время выполнения</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <DatePickerField
-              value={date}
-              onChange={v => { setDate(v); if (errors.date) setErrors(er => ({ ...er, date: "" })); }}
-              error={errors.date}
-            />
-            {errors.date && <p className="text-[10px] text-red-500">{errors.date}</p>}
-          </div>
-          <div className="flex flex-col gap-1">
-            <input type="text" value={time}
-              onChange={e => { setTime(e.target.value); if (errors.time) setErrors(er => ({ ...er, time: "" })); }}
-              placeholder="ЧЧ:ММ"
-              className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none transition-all ${errors.time ? "border-red-400 bg-red-50" : "border-gray-200 focus:border-blue-400"}`} />
-            {errors.time && <p className="text-[10px] text-red-500">{errors.time}</p>}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-700">Написать комментарий</label>
-          <textarea value={comment} onChange={e => setComment(e.target.value)}
-            placeholder="Опишите детали вашей заявки..."
-            rows={3}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs outline-none resize-none focus:border-blue-400 transition-all" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-700">Цена</label>
-            <div className="relative">
-              <input type="text" inputMode="numeric" value={price}
-                onChange={e => { setPrice(e.target.value.replace(/\D/g, "")); if (errors.price) setErrors(er => ({ ...er, price: "" })); }}
-                placeholder="0"
-                className={`w-full px-3 py-2.5 pr-6 rounded-xl border text-xs outline-none transition-all ${errors.price ? "border-red-400 bg-red-50" : "border-gray-200 focus:border-blue-400"}`} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">₸</span>
-            </div>
-            {errors.price && <p className="text-[10px] text-red-500">{errors.price}</p>}
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-700">Ваш адрес</label>
-            <button type="button"
-              onClick={() => { setShowAddressPicker(true); if (errors.address) setErrors(er => ({ ...er, address: "" })); }}
-              className={`w-full px-3 py-2.5 rounded-xl border text-xs text-left flex items-center gap-2 transition-all ${errors.address ? "border-red-400 bg-red-50" : address ? "border-gray-200 bg-gray-50" : "border-gray-200 hover:border-blue-400"}`}>
-              <svg className="w-3.5 h-3.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-              {address
-                ? <span className="truncate text-gray-800">{address.split(",").slice(0, 2).join(",")}{city ? <span className="text-gray-400 ml-1">({city})</span> : null}</span>
-                : <span className="text-gray-400">Выберите адрес</span>
-              }
+    <div className="space-y-4 overflow-y-auto" style={{ maxHeight: "calc(85vh - 130px)" }}>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-semibold text-gray-700">Категория</label>
+        <div className="flex flex-wrap gap-2">
+          {services.map(s => (
+            <button key={s.key} onClick={() => setServiceKey(s.key)}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+              style={serviceKey === s.key
+                ? { background: BLUE, color: "white", border: `1px solid ${BLUE}` }
+                : { background: "white", color: "#6b7280", border: "1px solid #e5e7eb" }}>
+              {s.label}
             </button>
-            {errors.address && <p className="text-[10px] text-red-500">{errors.address}</p>}
-          </div>
+          ))}
         </div>
+      </div>
 
-        {showAddressPicker && (
-          <AddressPickerModal
-            onClose={() => setShowAddressPicker(false)}
-            onSelect={(addr, c) => { setAddress(addr); setCity(c); setShowAddressPicker(false); }}
-          />
-        )}
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-semibold text-gray-700">Описание</label>
+        <textarea value={description} onChange={e => { setDescription(e.target.value); if (errors.description) setErrors(er => ({ ...er, description: "" })); }}
+          placeholder="Опишите задачу подробно..."
+          rows={3}
+          className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none resize-none transition-all ${errors.description ? "border-red-400 bg-red-50" : "border-gray-200 focus:border-blue-400"}`} />
+        {errors.description && <p className="text-[10px] text-red-500">{errors.description}</p>}
+      </div>
 
-        <button onClick={() => { const errs = validate(); setErrors(errs); if (!Object.keys(errs).length) setSubmitted(true); }}
-          className="w-full py-3 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
-          style={{ background: BLUE }}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" fill="currentColor" stroke="none" /></svg>
-          Отправить заявку
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-700">Дата выполнения</label>
+          <DatePickerField value={date} onChange={v => { setDate(v); if (errors.date) setErrors(er => ({ ...er, date: "" })); }} error={errors.date} />
+          {errors.date && <p className="text-[10px] text-red-500">{errors.date}</p>}
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-700">Цена (₸)</label>
+          <input type="text" inputMode="numeric" value={price}
+            onChange={e => setPrice(e.target.value.replace(/\D/g, ""))}
+            placeholder="0"
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all" />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-semibold text-gray-700">Ваш адрес</label>
+        <button type="button" onClick={() => { setShowMap(true); if (errors.address) setErrors(er => ({ ...er, address: "" })); }}
+          className={`w-full px-3 py-2.5 rounded-xl border text-xs text-left flex items-center gap-2 transition-all ${errors.address ? "border-red-400 bg-red-50" : address ? "border-gray-200 bg-gray-50" : "border-gray-200 hover:border-blue-400"}`}>
+          <svg className="w-3.5 h-3.5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          {address ? <span className="truncate text-gray-800">{address.split(",").slice(0, 3).join(",")}{city ? <span className="text-gray-400 ml-1">({city})</span> : null}</span>
+            : <span className="text-gray-400">Выберите адрес на карте</span>}
         </button>
-        <p className="text-[10px] text-gray-400 text-center flex items-center justify-center gap-1">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><line x1="12" y1="8" x2="12" y2="12" strokeWidth="2" /><line x1="12" y1="16" x2="12.01" y2="16" strokeWidth="3" /></svg>
-          Мы уведомим вас, когда ответит помощник.
-        </p>
+        {errors.address && <p className="text-[10px] text-red-500">{errors.address}</p>}
+      </div>
+
+      {showMap && <AddressPickerModal onClose={() => setShowMap(false)} onSelect={(addr, c) => { setAddress(addr); setCity(c); setShowMap(false); }} />}
+
+      <div className="flex gap-3 pt-1">
+        <button onClick={onBack}
+          className="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
+          Назад
+        </button>
+        <button onClick={handleSend} disabled={sending}
+          className="flex-1 py-2.5 text-xs font-bold text-white rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50"
+          style={{ background: GREEN }}>
+          {sending ? "Отправляем..." : "Отправить заявку"}
+        </button>
       </div>
     </div>
   );
 }
 
-function FindHelpersTab({ userId }: { userId: number }) {
+function FindHelpersTab({ userId: _userId }: { userId: string }) {
   const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [cityFilter, setCityFilter] = useState<"all" | "almaty" | "astana">("all");
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
-  const [selectedHelper, setSelectedHelper] = useState<MockHelper | null>(null);
+  const [helpers, setHelpers] = useState<RealHelper[]>([]);
+  const [loadingHelpers, setLoadingHelpers] = useState(true);
+  const [selectedHelper, setSelectedHelper] = useState<RealHelper | null>(null);
   const [showSelectReq, setShowSelectReq] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [view, setView] = useState<"grid" | "form">("grid");
+  const [newRequestHelper, setNewRequestHelper] = useState<RealHelper | null>(null);
+  const [confirmData, setConfirmData] = useState<{ helper: RealHelper; req: ServiceRequest } | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [invitedRequestId, setInvitedRequestId] = useState<string | null>(null);
+  const [myRequests, setMyRequests] = useState<ServiceRequest[]>([]);
+  const [profileHelper, setProfileHelper] = useState<{ helper: RealHelper; colorId: number } | null>(null);
 
-  const activeWithNoHelper = loadRequests(userId).filter(r => (r.status ?? "active") === "active" && !r.helper);
+  useEffect(() => {
+    api.getVolunteers()
+      .then((list: any[]) => {
+        setHelpers(list.map(u => ({
+          id: u.id,
+          name: u.name || `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          categories: u.categories ?? [],
+          rating: u.rating ?? 0,
+          aboutMe: u.aboutMe ?? "",
+          avatarUrl: u.avatarUrl,
+          city: u.city,
+        } as RealHelper)));
+      })
+      .catch(() => {})
+      .finally(() => setLoadingHelpers(false));
+    api.getMyRequests().then(list => setMyRequests(list.map(mapBackendRequest))).catch(() => {});
+  }, []);
 
-  const filtered = MOCK_HELPERS.filter(h => {
-    const q = query.toLowerCase();
-    const matchQ = !q || h.name.toLowerCase().includes(q) || h.categoryLabel.toLowerCase().includes(q) || h.description.toLowerCase().includes(q);
-    const matchC = cityFilter === "all" || h.city === cityFilter;
-    return matchQ && matchC;
-  });
+  const activeWithNoHelper = myRequests.filter(r => (r.status ?? "active") === "active" && !r.helper);
 
-  const handleSelect = (h: MockHelper) => {
-    setSelectedHelper(h);
-    if (activeWithNoHelper.length > 0) setShowSelectReq(true);
-    else setShowConfirm(true);
-  };
+  const CATEGORY_FILTERS = [
+    { key: "all", label: "Все" },
+    ...CATEGORIES_LIST.map(c => ({ key: c.key, label: c.label })),
+  ];
 
   const cityLabel = cityFilter === "almaty" ? "Алматы" : cityFilter === "astana" ? "Астана" : "Все города";
 
-  if (view === "form" && selectedHelper) {
-    return <HelperRequestForm helper={selectedHelper} onBack={() => { setView("grid"); setSelectedHelper(null); }} />;
-  }
+  const filtered = helpers.filter(h => {
+    const q = query.toLowerCase();
+    const matchQ = !q || h.name.toLowerCase().includes(q) || h.aboutMe.toLowerCase().includes(q) ||
+      h.categories.some(c => (CATEGORY_META[c]?.label ?? c).toLowerCase().includes(q));
+    const matchCat = categoryFilter === "all" || h.categories.includes(categoryFilter);
+    const matchCity = cityFilter === "all" || (h.city ?? "").toLowerCase() === cityFilter;
+    return matchQ && matchCat && matchCity;
+  });
+
+  const handleSelect = (h: RealHelper) => {
+    setSelectedHelper(h);
+    setInvitedRequestId(null);
+    setShowSelectReq(true);
+  };
+
+  const handleSelectRequest = (req: ServiceRequest) => {
+    setShowSelectReq(false);
+    setConfirmData({ helper: selectedHelper!, req });
+  };
+
+  const handleNewRequest = () => {
+    setShowSelectReq(false);
+    setNewRequestHelper(selectedHelper);
+    setSelectedHelper(null);
+  };
+
+  const handleConfirmInvite = async () => {
+    if (!confirmData) return;
+    setInviteLoading(true);
+    try {
+      await api.inviteHelper(confirmData.req.id, confirmData.helper.id);
+      setInvitedRequestId(confirmData.req.id);
+      setConfirmData(null);
+      setSelectedHelper(null);
+    } catch (e) {
+      console.error("[INVITE] failed", e);
+    } finally {
+      setInviteLoading(false);
+    }
+  };
 
   return (
     <>
       <div className="space-y-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3">
-          <div className="flex items-center gap-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3 space-y-3">
+          <div className="flex items-center gap-3">
             <div className="relative flex-1">
               <input type="text" value={query} onChange={e => setQuery(e.target.value)}
-                placeholder="Поиск услуг"
+                placeholder="Поиск помощников"
                 className="w-full px-4 py-2.5 pr-11 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-400 transition-all" />
               <div className="absolute right-0 top-0 bottom-0 w-10 flex items-center justify-center rounded-r-xl" style={{ background: BLUE }}>
-                <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
               </div>
             </div>
             <div className="relative shrink-0">
               <div className="text-right">
                 <p className="text-[10px] text-gray-400 leading-tight">Мой город:</p>
                 <button onClick={() => setCityPickerOpen(v => !v)}
-                  className="text-xs font-bold transition-opacity hover:opacity-75"
+                  className="text-xs font-bold transition-opacity hover:opacity-75 flex items-center gap-1"
                   style={{ color: BLUE }}>
                   {cityLabel}
+                  <ChevronDown className="w-3 h-3" />
                 </button>
               </div>
               {cityPickerOpen && (
@@ -1878,34 +2555,66 @@ function FindHelpersTab({ userId }: { userId: number }) {
               )}
             </div>
           </div>
+          <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+            {CATEGORY_FILTERS.map(f => (
+              <button key={f.key} onClick={() => setCategoryFilter(f.key)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all"
+                style={categoryFilter === f.key
+                  ? { background: BLUE, color: "white", border: `1px solid ${BLUE}` }
+                  : { background: "white", color: "#6b7280", border: "1px solid #e5e7eb" }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {filtered.length === 0 ? (
+        {invitedRequestId && (
+          <div className="rounded-2xl px-5 py-3 flex items-center gap-2" style={{ background: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+            <p className="text-xs font-semibold" style={{ color: GREEN }}>Приглашение отправлено!</p>
+          </div>
+        )}
+
+        {loadingHelpers ? (
+          <div className="bg-white rounded-2xl p-12 text-center border border-gray-100 shadow-sm">
+            <p className="text-gray-400 text-sm">Загрузка...</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 text-center border border-gray-100 shadow-sm">
             <p className="text-gray-400 text-sm">По вашему запросу ничего не найдено</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {filtered.map(h => (
-              <div key={h.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col">
-                <div className="flex items-start gap-3 mb-2">
-                  <HelperAvatar name={h.name} size={44} colorId={h.id} />
-                  <div className="min-w-0">
-                    <p className="font-bold text-gray-900 text-xs leading-tight">{h.name}</p>
-                    <p className="text-[10px] text-gray-400 leading-tight mb-1">{h.categoryLabel}</p>
-                    <StarRating rating={h.rating} />
+            {filtered.map((h, idx) => {
+              const colorId = Math.abs(h.id.charCodeAt(0)) + idx;
+              const displayRating = h.rating > 0 ? h.rating : null;
+              return (
+                <div key={h.id}
+                  className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col cursor-pointer hover:border-blue-200 hover:shadow-md transition-all"
+                  onClick={() => setProfileHelper({ helper: h, colorId })}>
+                  <div className="flex items-start gap-3 mb-2">
+                    <HelperAvatar name={h.name} size={44} colorId={colorId} avatarUrl={h.avatarUrl} />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-gray-900 text-xs leading-tight">{h.name}</p>
+                      <div className="flex flex-wrap gap-1 mt-1 mb-1">
+                        {h.categories.slice(0, 2).map(c => (
+                          <span key={c} className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: "#EFF6FF", color: BLUE }}>{CATEGORY_META[c]?.label ?? c}</span>
+                        ))}
+                      </div>
+                      {displayRating !== null && <StarRating rating={displayRating} />}
+                    </div>
+                  </div>
+                  {h.aboutMe && <p className="text-[11px] text-gray-500 leading-snug line-clamp-3 flex-1 mb-3">{h.aboutMe}</p>}
+                  <div className="flex justify-end mt-auto">
+                    <button onClick={e => { e.stopPropagation(); handleSelect(h); }}
+                      className="px-4 py-1.5 text-white text-xs font-bold rounded-lg transition-opacity hover:opacity-90"
+                      style={{ background: BLUE }}>
+                      Выбрать
+                    </button>
                   </div>
                 </div>
-                <p className="text-[11px] text-gray-500 leading-snug line-clamp-3 flex-1 mb-3">{h.description}</p>
-                <div className="flex justify-end">
-                  <button onClick={() => handleSelect(h)}
-                    className="px-4 py-1.5 text-white text-xs font-bold rounded-lg transition-opacity hover:opacity-90"
-                    style={{ background: BLUE }}>
-                    Выбрать
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1913,15 +2622,47 @@ function FindHelpersTab({ userId }: { userId: number }) {
       {showSelectReq && selectedHelper && (
         <SelectRequestModal
           requests={activeWithNoHelper}
-          onSelect={() => { setShowSelectReq(false); setShowConfirm(true); }}
+          helper={selectedHelper}
+          onSelect={handleSelectRequest}
+          onNewRequest={handleNewRequest}
           onClose={() => { setShowSelectReq(false); setSelectedHelper(null); }}
         />
       )}
-      {showConfirm && selectedHelper && (
-        <ConfirmHelperModal
-          helper={selectedHelper}
-          onClose={() => { setShowConfirm(false); setSelectedHelper(null); }}
-          onConfirm={() => { setShowConfirm(false); setView("form"); }}
+      {newRequestHelper && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" style={{ maxHeight: "90vh" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm">Новая заявка</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">Для помощника <span className="font-semibold">{newRequestHelper.name}</span></p>
+              </div>
+              <button onClick={() => setNewRequestHelper(null)} className="text-gray-400 hover:text-gray-700 text-xl font-light">✕</button>
+            </div>
+            <div className="p-5">
+              <NewRequestForm
+                helper={newRequestHelper}
+                onBack={() => setNewRequestHelper(null)}
+                onSent={reqId => { setInvitedRequestId(reqId); setNewRequestHelper(null); }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmData && (
+        <ConfirmInviteModal
+          helper={confirmData.helper}
+          request={confirmData.req}
+          onClose={() => setConfirmData(null)}
+          onConfirm={handleConfirmInvite}
+          loading={inviteLoading}
+        />
+      )}
+      {profileHelper && (
+        <HelperProfileModal
+          helper={profileHelper.helper}
+          colorId={profileHelper.colorId}
+          onClose={() => setProfileHelper(null)}
+          onSelect={() => { handleSelect(profileHelper.helper); setProfileHelper(null); }}
         />
       )}
     </>
@@ -1930,9 +2671,10 @@ function FindHelpersTab({ userId }: { userId: number }) {
 
 /* ─────────────── notifications tab ─────────────── */
 interface NotifItem {
-  id: number;
-  type: "accepted" | "new_response" | "reminder" | "rejected" | "message";
+  id: string | number;
+  type: "accepted" | "new_response" | "reminder" | "rejected" | "message" | "cancelled" | "response_accepted" | "response_declined" | "request_completed" | "new_invite" | "invite_accepted" | "invite_declined" | "doc_reviewed";
   time: string;
+  timestamp: string;
   helperName?: string;
   service?: string;
   reason?: string;
@@ -1940,24 +2682,333 @@ interface NotifItem {
   rating?: number;
   preview?: string;
   date?: string;
+  responseId?: string;
+  responseStatus?: "accepted" | "declined";
+  requestId?: string;
+  actorId?: string;
+  inviteReplyStatus?: "accepted" | "declined";
 }
 
-const NOTIFS_TODAY: NotifItem[] = [
-  { id: 1, type: "accepted", helperName: "Аймердинов Амир", service: "Покупка", time: "12:45" },
-  { id: 2, type: "new_response", helperName: "Айбергенова Асылай", category: "Бытовая помощь", rating: 4.8, time: "11:05" },
-  { id: 3, type: "reminder", preview: "Сегодня в 16:00 уборка квартиры.", time: "" },
-];
-const NOTIFS_YESTERDAY: NotifItem[] = [
-  { id: 4, type: "rejected", helperName: "Береке Мадина", service: "Покупка лекарств", reason: "По личным причинам", time: "18:05" },
-  { id: 5, type: "accepted", helperName: "Куаныш Дастан", service: "Бытовая помощь", time: "18:05" },
-];
-const NOTIFS_EARLIER: NotifItem[] = [
-  { id: 6, type: "message", helperName: "Бакыт Диас", preview: "Я уже купил всё необходимое", date: "28 марта", time: "10:20" },
-];
+/* ─────────────── review modal ─────────────── */
+function ReviewModal({ targetId, requestTitle, helperName, authorId, requestId, onClose, onSubmitted }: {
+  targetId: string;
+  requestTitle: string;
+  helperName: string;
+  authorId: string;
+  requestId?: string;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const [rating, setRating] = useState(0);
+  const [hovered, setHovered] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [visible, setVisible] = useState(false);
 
-function NotifCard({ n, onView }: { n: NotifItem; onView?: () => void }) {
-  const h = n.helperName ? MOCK_HELPERS.find(x => x.name === n.helperName) : undefined;
-  const colorId = h?.id ?? 0;
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 10);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleClose = () => {
+    setVisible(false);
+    setTimeout(onClose, 200);
+  };
+
+  const handleSubmit = async () => {
+    if (rating === 0) return;
+    setSubmitting(true);
+    try {
+      await api.submitReview({ targetId: targetId || authorId, rating, comment, authorId, requestId });
+      setDone(true);
+      setTimeout(() => { onSubmitted(); handleClose(); }, 1500);
+    } catch (e) {
+      console.error("[REVIEW] submit failed", e);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const STAR_LABELS = ["", "Плохо", "Не очень", "Нормально", "Хорошо", "Отлично!"];
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4"
+      style={{ background: visible ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)", backdropFilter: "blur(4px)", transition: "background 0.2s" }}
+      onClick={handleClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden"
+        style={{
+          transform: visible ? "translateY(0) scale(1)" : "translateY(40px) scale(0.97)",
+          opacity: visible ? 1 : 0,
+          transition: "transform 0.25s cubic-bezier(.34,1.56,.64,1), opacity 0.2s ease",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4">
+          <h3 className="font-bold text-gray-900 text-base">Оцените услугу</h3>
+          <button
+            onClick={handleClose}
+            className="w-7 h-7 flex items-center justify-center rounded-full transition-colors hover:bg-gray-100 text-gray-400 hover:text-gray-700"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {done ? (
+          <div className="flex flex-col items-center pb-10 pt-4 gap-3 px-6">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center"
+              style={{ background: "#DCFCE7", animation: "scaleIn 0.35s cubic-bezier(.34,1.56,.64,1)" }}
+            >
+              <svg className="w-8 h-8" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <p className="font-bold text-gray-900 text-base">Спасибо за отзыв!</p>
+            <p className="text-xs text-gray-400 text-center">Ваша оценка поможет другим пользователям</p>
+          </div>
+        ) : (
+          <div className="px-6 pb-6 space-y-5">
+            {/* Helper + request info */}
+            <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                  style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+                  {(helperName || "?")[0].toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-800 text-sm leading-tight truncate">{helperName || "Помощник"}</p>
+                  <p className="text-[11px] text-gray-400 leading-tight truncate">{requestTitle}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Stars */}
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex gap-1.5">
+                {[1, 2, 3, 4, 5].map(i => {
+                  const active = (hovered || rating) >= i;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onMouseEnter={() => setHovered(i)}
+                      onMouseLeave={() => setHovered(0)}
+                      onClick={() => setRating(i)}
+                      style={{
+                        transform: active ? "scale(1.15)" : "scale(1)",
+                        transition: "transform 0.15s cubic-bezier(.34,1.56,.64,1)",
+                      }}
+                    >
+                      <svg className="w-10 h-10" viewBox="0 0 24 24"
+                        fill={active ? "#F59E0B" : "#E5E7EB"}
+                        style={{ filter: active ? "drop-shadow(0 2px 4px rgba(245,158,11,0.4))" : "none", transition: "fill 0.15s, filter 0.15s" }}>
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                      </svg>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs font-semibold h-4 transition-all"
+                style={{ color: rating ? "#F59E0B" : "#9ca3af" }}>
+                {STAR_LABELS[hovered || rating]}
+              </p>
+            </div>
+
+            {/* Comment */}
+            <div>
+              <label className="text-xs font-semibold text-gray-700 block mb-1.5">
+                Комментарий <span className="text-gray-400 font-normal">(необязательно)</span>
+              </label>
+              <textarea
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+                placeholder="Расскажите подробнее об услуге..."
+                rows={3}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs outline-none resize-none focus:border-blue-400 transition-all"
+              />
+            </div>
+
+            <button
+              onClick={handleSubmit}
+              disabled={rating === 0 || submitting}
+              className="w-full py-3 text-white text-sm font-bold rounded-xl transition-all"
+              style={{
+                background: rating === 0 ? "#9ca3af" : GREEN,
+                cursor: rating === 0 ? "not-allowed" : "pointer",
+                opacity: submitting ? 0.7 : 1,
+              }}
+            >
+              {submitting ? "Отправляем..." : "Оставить отзыв"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes scaleIn {
+          from { transform: scale(0.5); opacity: 0; }
+          to   { transform: scale(1);   opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/* ─────────────── invite reply modal ─────────────── */
+function InviteModal({ requestId, requestTitle, authorName, onClose, onReplied }: {
+  requestId: string;
+  requestTitle: string;
+  authorName: string;
+  onClose: () => void;
+  onReplied: (accepted: boolean) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [request, setRequest] = useState<any>(null);
+  const [replied, setReplied] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (requestId) {
+      api.getRequestById(requestId).then(r => setRequest(r)).catch(() => {});
+    }
+  }, [requestId]);
+
+  const handleReply = async (accepted: boolean) => {
+    setLoading(true);
+    try {
+      await api.replyToInvite(requestId, accepted);
+      setReplied(accepted);
+      setTimeout(() => { onReplied(accepted); onClose(); }, 1200);
+    } catch (e) {
+      console.error("[INVITE] reply failed", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const SERVICE_LABELS: Record<string, string> = {
+    household: "Бытовые услуги", medical: "Медицинская помощь",
+    escort: "Сопровождение", homework: "Домашние работы", shopping: "Покупки",
+  };
+
+  const authorInitial = (authorName || "?")[0].toUpperCase();
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 className="font-bold text-gray-900 text-base">Личное приглашение</h3>
+          <button onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {replied !== null ? (
+          <div className="flex flex-col items-center py-10 px-6 gap-3">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center"
+              style={{ background: replied ? "#DCFCE7" : "#FEE2E2" }}>
+              {replied
+                ? <svg className="w-8 h-8" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+                : <svg className="w-8 h-8" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              }
+            </div>
+            <p className="font-bold text-gray-900 text-base">{replied ? "Заявка принята!" : "Приглашение отклонено"}</p>
+            <p className="text-xs text-gray-400 text-center">
+              {replied ? "Заявка появится в ваших активных задачах" : "Заказчик получит уведомление"}
+            </p>
+          </div>
+        ) : (
+          <div className="px-6 py-5 space-y-4">
+            {/* Author card */}
+            <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-100 bg-gray-50">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
+                style={{ background: "linear-gradient(135deg,#5bb8f5 0%,#3b82f6 100%)" }}>
+                {authorInitial}
+              </div>
+              <div>
+                <p className="font-bold text-gray-800 text-sm">{authorName}</p>
+                <p className="text-[11px] text-gray-400">Заказчик</p>
+              </div>
+            </div>
+
+            {/* Request details */}
+            <div className="rounded-xl border border-gray-100 overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50">
+                <p className="text-xs font-semibold text-gray-700">Информация о заявке</p>
+              </div>
+              <div className="px-4 py-3 space-y-2.5">
+                <div className="flex justify-between gap-2">
+                  <span className="text-[11px] text-gray-400">Категория</span>
+                  <span className="text-[11px] font-semibold text-gray-800">
+                    {request ? (SERVICE_LABELS[request.category] ?? request.category) : requestTitle}
+                  </span>
+                </div>
+                {request?.description && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[11px] text-gray-400">Описание</span>
+                    <span className="text-[11px] text-gray-700 leading-relaxed">{request.description}</span>
+                  </div>
+                )}
+                {request?.scheduledDate && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[11px] text-gray-400">Дата выполнения</span>
+                    <span className="text-[11px] font-semibold text-gray-800">{request.scheduledDate}</span>
+                  </div>
+                )}
+                {request?.price != null && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[11px] text-gray-400">Вознаграждение</span>
+                    <span className="text-[11px] font-bold" style={{ color: GREEN }}>{request.price} ₸</span>
+                  </div>
+                )}
+                {request?.location && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[11px] text-gray-400 shrink-0">Адрес</span>
+                    <span className="text-[11px] text-gray-700 text-right break-words max-w-[200px]">{request.location}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => handleReply(false)} disabled={loading}
+                className="flex-1 py-3 text-xs font-semibold rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
+                Отклонить
+              </button>
+              <button onClick={() => handleReply(true)} disabled={loading}
+                className="flex-1 py-3 text-xs font-bold text-white rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ background: GREEN }}>
+                {loading ? "..." : "Принять"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NotifCard({ n, onView, onAcceptResponse, onDeclineResponse, processingResponseId, onOpenReview, onOpenInvite }: {
+  n: NotifItem;
+  onView?: () => void;
+  onAcceptResponse?: (responseId: string) => void;
+  onDeclineResponse?: (responseId: string) => void;
+  processingResponseId?: string | null;
+  onOpenReview?: (n: NotifItem) => void;
+  onOpenInvite?: (n: NotifItem) => void;
+}) {
+  const colorId = Math.abs(n.helperName?.charCodeAt(0) ?? 0) % 8;
 
   if (n.type === "accepted") return (
     <div className="flex items-start gap-3">
@@ -1984,20 +3035,69 @@ function NotifCard({ n, onView }: { n: NotifItem; onView?: () => void }) {
         <svg className="w-4 h-4" fill="none" stroke="#EAB308" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold text-gray-900 mb-2">Новый отклик на заявку</p>
-        <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+        <p className="text-xs font-semibold text-gray-900 mb-1">Новый отклик на заявку</p>
+        {n.service && <p className="text-[10px] text-gray-400 mb-2">Заявка: {n.service}</p>}
+        <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 mb-2">
           {n.helperName && <HelperAvatar name={n.helperName} size={32} colorId={colorId} />}
-          <div>
-            <p className="text-[11px] font-semibold text-gray-800 leading-tight">{n.helperName}</p>
-            <p className="text-[10px] text-gray-400 leading-tight">{n.category}</p>
-            <StarRating rating={n.rating ?? 4.8} />
-          </div>
+          <p className="text-[11px] font-semibold text-gray-800 leading-tight">{n.helperName}</p>
         </div>
+        {n.responseStatus === "accepted" && (
+          <p className="text-[11px] font-semibold" style={{ color: GREEN }}>✓ Вы приняли отклик</p>
+        )}
+        {n.responseStatus === "declined" && (
+          <p className="text-[11px] font-semibold" style={{ color: "#EF4444" }}>✗ Вы отклонили отклик</p>
+        )}
+        {!n.responseStatus && n.responseId && (() => {
+          const isProcessing = processingResponseId === n.responseId;
+          return (
+            <div className="flex gap-2">
+              <button
+                onClick={() => !isProcessing && onAcceptResponse?.(n.responseId!)}
+                disabled={isProcessing}
+                className="px-3 py-1 text-[11px] font-semibold rounded-lg text-white transition-opacity hover:opacity-90"
+                style={{ background: isProcessing ? "#9ca3af" : GREEN, cursor: isProcessing ? "wait" : "pointer" }}>
+                {isProcessing ? "..." : "Принять"}
+              </button>
+              <button
+                onClick={() => !isProcessing && onDeclineResponse?.(n.responseId!)}
+                disabled={isProcessing}
+                className="px-3 py-1 text-[11px] font-semibold rounded-lg border transition-colors hover:bg-red-50"
+                style={{ color: isProcessing ? "#9ca3af" : "#EF4444", borderColor: isProcessing ? "#d1d5db" : "#fecaca", cursor: isProcessing ? "wait" : "pointer" }}>
+                {isProcessing ? "..." : "Отклонить"}
+              </button>
+            </div>
+          );
+        })()}
       </div>
-      <div className="flex flex-col items-end gap-1.5 shrink-0 ml-2">
-        {n.time && <span className="text-[10px] text-gray-400">{n.time}</span>}
-        {onView && <button onClick={onView} className="px-3 py-1 text-[10px] font-semibold rounded-lg whitespace-nowrap border border-gray-200 hover:bg-gray-50 transition-colors text-gray-700">Посмотреть</button>}
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+    </div>
+  );
+
+  if (n.type === "response_accepted") return (
+    <div className="flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#DCFCE7" }}>
+        <svg className="w-4 h-4" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
       </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-900">Ваш отклик принят</p>
+        {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+        {n.helperName && <p className="text-[10px] text-gray-400">Принял(а): {n.helperName}</p>}
+      </div>
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+    </div>
+  );
+
+  if (n.type === "response_declined") return (
+    <div className="flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FEE2E2" }}>
+        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-900">Ваш отклик отклонён</p>
+        {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+        {n.helperName && <p className="text-[10px] text-gray-400">Отклонил(а): {n.helperName}</p>}
+      </div>
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
     </div>
   );
 
@@ -2041,53 +3141,229 @@ function NotifCard({ n, onView }: { n: NotifItem; onView?: () => void }) {
     </div>
   );
 
+  if (n.type === "cancelled") return (
+    <div className="flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FEE2E2" }}>
+        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-900">Заявка отменена заказчиком</p>
+        {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+      </div>
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+    </div>
+  );
+
+  if (n.type === "request_completed") {
+    const reviewed = n.inviteReplyStatus === "accepted";
+    return (
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+          style={{ background: reviewed ? "#FEF9C3" : "#DCFCE7" }}>
+          {reviewed
+            ? <svg className="w-4 h-4" viewBox="0 0 24 24" fill="#F59E0B"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+            : <svg className="w-4 h-4" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+          }
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-gray-900">Заявка выполнена</p>
+          {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+          {n.helperName && <p className="text-[10px] text-gray-400 mb-2">Помощник: {n.helperName}</p>}
+          {reviewed
+            ? <p className="text-[11px] font-semibold" style={{ color: "#F59E0B" }}>★ Отзыв оставлен</p>
+            : (
+              <button
+                onClick={() => onOpenReview?.(n)}
+                className="px-3 py-1 text-[11px] font-bold rounded-lg text-white transition-opacity hover:opacity-90"
+                style={{ background: "#F59E0B" }}>
+                Оценить
+              </button>
+            )
+          }
+        </div>
+        <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+      </div>
+    );
+  }
+
+  if (n.type === "new_invite") return (
+    <div className="flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+        style={{ background: n.inviteReplyStatus === "accepted" ? "#DCFCE7" : n.inviteReplyStatus === "declined" ? "#FEE2E2" : "#EFF6FF" }}>
+        {n.inviteReplyStatus === "accepted"
+          ? <svg className="w-4 h-4" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+          : n.inviteReplyStatus === "declined"
+          ? <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          : <svg className="w-4 h-4" fill="none" stroke={BLUE} strokeWidth="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+        }
+      </div>
+      <div className="flex-1 min-w-0">
+        {n.inviteReplyStatus === "accepted" && (
+          <>
+            <p className="text-xs font-semibold text-gray-900">Вы приняли приглашение</p>
+            {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+            {n.helperName && <p className="text-[10px] text-gray-400">От заказчика: {n.helperName}</p>}
+          </>
+        )}
+        {n.inviteReplyStatus === "declined" && (
+          <>
+            <p className="text-xs font-semibold text-gray-900">Вы отклонили приглашение</p>
+            {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+          </>
+        )}
+        {!n.inviteReplyStatus && (
+          <>
+            <p className="text-xs font-semibold text-gray-900">Личное приглашение</p>
+            {n.helperName && <p className="text-[10px] text-gray-400 mb-1">От: {n.helperName}</p>}
+            {n.service && <p className="text-[10px] text-gray-400 mb-2">Заявка: {n.service}</p>}
+            <button
+              onClick={() => onOpenInvite?.(n)}
+              className="px-3 py-1 text-[11px] font-bold rounded-lg border transition-colors hover:bg-blue-50"
+              style={{ color: BLUE, borderColor: "#BFDBFE" }}>
+              Открыть заявку
+            </button>
+          </>
+        )}
+      </div>
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+    </div>
+  );
+
+  if (n.type === "invite_accepted") return (
+    <div className="flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#DCFCE7" }}>
+        <svg className="w-4 h-4" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-900">Приглашение принято</p>
+        {n.helperName && <p className="text-[10px] text-gray-400">Помощник: {n.helperName}</p>}
+        {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+      </div>
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+    </div>
+  );
+
+  if (n.type === "invite_declined") return (
+    <div className="flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FEE2E2" }}>
+        <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-900">Приглашение отклонено</p>
+        {n.helperName && <p className="text-[10px] text-gray-400">Помощник: {n.helperName}</p>}
+        {n.service && <p className="text-[10px] text-gray-400">Заявка: {n.service}</p>}
+      </div>
+      <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+    </div>
+  );
+
+  if (n.type === "doc_reviewed") {
+    const approved = n.helperName === "APPROVED";
+    return (
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+          style={{ background: approved ? "#DCFCE7" : "#FEE2E2" }}>
+          {approved
+            ? <svg className="w-4 h-4" fill="none" stroke={GREEN} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+            : <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          }
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-gray-900">
+            Документ {approved ? "принят" : "отклонён"}
+          </p>
+          {n.service && <p className="text-[10px] text-gray-500 mt-0.5">Файл: {n.service}</p>}
+          {!approved && n.helperName && n.helperName !== "APPROVED" && (
+            <div className="mt-1.5 px-2.5 py-1.5 rounded-lg text-[10px] leading-relaxed" style={{ background: "#FFF5F5", color: "#EF4444" }}>
+              Причина: {n.helperName}
+            </div>
+          )}
+        </div>
+        <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+      </div>
+    );
+  }
+
   return null;
 }
 
-function NotificationsTab() {
-  const [responseHelper, setResponseHelper] = useState<MockHelper | null>(null);
+function NotificationsTab({ realtimeNotifs, onAcceptResponse, onDeclineResponse, processingResponseId, userId, onUpdateNotif }: {
+  realtimeNotifs: NotifItem[];
+  onAcceptResponse: (responseId: string) => void;
+  onDeclineResponse: (responseId: string) => void;
+  processingResponseId?: string | null;
+  userId: string;
+  onUpdateNotif: (id: string | number, patch: Partial<NotifItem>) => void;
+}) {
+  const todayStr = new Date().toDateString();
+  const [reviewNotif, setReviewNotif] = useState<NotifItem | null>(null);
+  const [inviteNotif, setInviteNotif] = useState<NotifItem | null>(null);
 
-  const handleViewResponse = (name: string) => {
-    const found = MOCK_HELPERS.find(h => h.name === name);
-    if (found) setResponseHelper(found);
-  };
+  const groups = new Map<string, NotifItem[]>();
+  realtimeNotifs.forEach(n => {
+    const d = new Date(n.timestamp);
+    const label = d.toDateString() === todayStr
+      ? "Сегодня"
+      : d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+    groups.set(label, [...(groups.get(label) ?? []), n]);
+  });
 
-  const renderGroup = (title: string, items: NotifItem[], twoCol = false) => (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100">
-        <h3 className="font-bold text-sm text-gray-800">{title}</h3>
+  if (groups.size === 0) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-10 text-center">
+        <p className="text-gray-400 text-sm">Уведомлений пока нет</p>
       </div>
-      {twoCol ? (
-        <div className="grid grid-cols-2 gap-3 p-4">
-          {items.map(n => (
-            <div key={n.id} className="border border-gray-100 rounded-xl p-4">
-              <NotifCard n={n} onView={n.type === "new_response" && n.helperName ? () => handleViewResponse(n.helperName!) : undefined} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="px-5 py-4 space-y-5">
-          {items.map(n => (
-            <NotifCard key={n.id} n={n} onView={n.type === "new_response" && n.helperName ? () => handleViewResponse(n.helperName!) : undefined} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+    );
+  }
 
   return (
     <>
       <div className="space-y-4">
-        {renderGroup("Сегодня", NOTIFS_TODAY)}
-        {renderGroup("Вчера", NOTIFS_YESTERDAY, true)}
-        {renderGroup("Ранее", NOTIFS_EARLIER)}
+        {[...groups.entries()].map(([label, items]) => (
+          <div key={label} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100">
+              <h3 className="font-bold text-sm text-gray-800">{label}</h3>
+            </div>
+            <div className="px-5 py-4 space-y-5">
+              {items.map(n => (
+                <NotifCard
+                  key={n.id}
+                  n={n}
+                  onAcceptResponse={onAcceptResponse}
+                  onDeclineResponse={onDeclineResponse}
+                  processingResponseId={processingResponseId}
+                  onOpenReview={setReviewNotif}
+                  onOpenInvite={setInviteNotif}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
-      {responseHelper && (
-        <ConfirmHelperModal
-          helper={responseHelper}
-          onClose={() => setResponseHelper(null)}
-          onConfirm={() => setResponseHelper(null)}
-          mode="response"
+      {reviewNotif && (
+        <ReviewModal
+          targetId={reviewNotif.actorId ?? ""}
+          requestTitle={reviewNotif.service ?? ""}
+          helperName={reviewNotif.helperName ?? ""}
+          authorId={userId}
+          requestId={reviewNotif.requestId}
+          onClose={() => setReviewNotif(null)}
+          onSubmitted={() => {
+            onUpdateNotif(reviewNotif.id, { inviteReplyStatus: "accepted" });
+            setReviewNotif(null);
+          }}
+        />
+      )}
+      {inviteNotif && inviteNotif.requestId && (
+        <InviteModal
+          requestId={inviteNotif.requestId}
+          requestTitle={inviteNotif.service ?? ""}
+          authorName={inviteNotif.helperName ?? ""}
+          onClose={() => setInviteNotif(null)}
+          onReplied={accepted => {
+            onUpdateNotif(inviteNotif.id, { inviteReplyStatus: accepted ? "accepted" : "declined" });
+            setInviteNotif(null);
+          }}
         />
       )}
     </>
@@ -2166,14 +3442,14 @@ function CategoryPickerModal({ selected, onToggle, onClose }: {
           {CATEGORIES_LIST.map(cat => {
             const isSel = selected.includes(cat.key);
             return (
-              <div key={cat.key} className="border border-gray-200 rounded-2xl p-4 flex flex-col items-center text-center gap-3">
+              <div key={cat.key} className="border border-gray-200 rounded-2xl p-4 flex flex-col items-center text-center gap-3 h-full">
                 <img src={CATEGORY_META[cat.key].img} className="w-20 h-20 object-contain" alt={cat.label} />
                 <div>
                   <p className="font-semibold text-gray-800 text-xs leading-tight">{cat.label}</p>
                   <p className="text-[10px] text-gray-400 leading-tight mt-0.5">{cat.desc}</p>
                 </div>
                 <button onClick={() => onToggle(cat.key)}
-                  className="w-full py-2 text-xs font-bold text-white rounded-lg transition-opacity hover:opacity-90"
+                  className="w-full py-2 text-xs font-bold text-white rounded-lg transition-opacity hover:opacity-90 mt-auto"
                   style={{ background: isSel ? "#EF4444" : GREEN }}>
                   {isSel ? "Убрать" : "Выбрать"}
                 </button>
@@ -2218,88 +3494,195 @@ function UnsavedChangesModal({ onSave, onDiscard }: { onSave: () => void; onDisc
   );
 }
 
+/* ─────────────── document types config ─────────────── */
+const DOC_TYPES = [
+  { key: "NARCO_CERT",   label: "Справка из наркологического диспансера" },
+  { key: "PSYCH_CERT",   label: "Справка из психиатрического диспансера" },
+  { key: "NO_CRIMINAL",  label: "Справка об отсутствии судимости" },
+] as const;
+
+type DocType = "NARCO_CERT" | "PSYCH_CERT" | "NO_CRIMINAL";
+
+interface UserDoc {
+  id: string; userId: string; documentType: DocType; fileName: string;
+  fileUrl: string; status: "PENDING" | "APPROVED" | "REJECTED";
+  rejectReason: string | null; uploadedAt: string; reviewedAt: string | null;
+}
+
+function DocStatusBadge({ status }: { status: string }) {
+  if (status === "APPROVED") return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: "#DCFCE7", color: GREEN }}>
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>Принято
+    </span>
+  );
+  if (status === "REJECTED") return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: "#FEE2E2", color: "#EF4444" }}>
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>Отказано
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: "#FEF9C3", color: "#CA8A04" }}>
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><line x1="12" y1="8" x2="12" y2="12" strokeWidth="2" /><line x1="12" y1="16" x2="12.01" y2="16" strokeWidth="3" /></svg>На проверке
+    </span>
+  );
+}
+
 function DocumentsView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingIdx, setPendingIdx] = useState<number | null>(null);
-  const [docs, setDocs] = useState<Array<{ type: string; date: string; size: string } | null>>([null, null, null]);
+  const [pendingType, setPendingType] = useState<DocType | null>(null);
+  const [docs, setDocs] = useState<UserDoc[]>([]);
+  const [uploading, setUploading] = useState<DocType | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleUploadClick = (i: number) => { setPendingIdx(i); fileInputRef.current?.click(); };
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0] && pendingIdx !== null) {
-      const f = e.target.files[0];
-      const ext = f.name.split(".").pop()?.toUpperCase() ?? "PDF";
-      const kb = Math.max(1, Math.round(f.size / 1024));
-      const d = new Date();
-      const date = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
-      setDocs(prev => { const n = [...prev]; n[pendingIdx] = { type: ext, date, size: `${kb} KB` }; return n; });
-      e.target.value = "";
-      setPendingIdx(null);
+  useEffect(() => {
+    api.getMyDocuments().then((list: any[]) => setDocs(list)).catch(() => {});
+  }, []);
+
+  const getDoc = (type: DocType) => docs.find(d => d.documentType === type) ?? null;
+
+  const handleUploadClick = (type: DocType) => {
+    setError(null);
+    setPendingType(type);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !pendingType) return;
+    if (file.type !== "application/pdf") {
+      setError("Разрешены только PDF файлы");
+      setPendingType(null);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Размер файла не должен превышать 10 МБ");
+      setPendingType(null);
+      return;
+    }
+    setUploading(pendingType);
+    setPendingType(null);
+    try {
+      const uploaded: any = await api.uploadDocument(pendingType as string, file);
+      setDocs(prev => {
+        const filtered = prev.filter(d => d.documentType !== uploaded.documentType);
+        return [...filtered, uploaded];
+      });
+    } catch {
+      setError("Ошибка при загрузке. Попробуйте ещё раз.");
+    } finally {
+      setUploading(null);
     }
   };
 
-  const allDone = docs.every(d => d !== null);
-
   return (
     <div className="space-y-4">
-      <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFileChange} />
+      <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleFileChange} />
+
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-semibold" style={{ background: "#FEE2E2", color: "#EF4444" }}>
+          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" strokeWidth="3" /></svg>
+          {error}
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-5 py-3.5 text-left font-semibold text-gray-600">Название</th>
-              <th className="px-5 py-3.5 text-left font-semibold text-gray-600">Тип</th>
-              {allDone && <><th className="px-5 py-3.5 text-left font-semibold text-gray-600">Дата</th><th className="px-5 py-3.5 text-left font-semibold text-gray-600">Размер</th></>}
-              <th className="px-5 py-3.5 text-right font-semibold text-gray-600">Действие</th>
-            </tr>
-          </thead>
-          <tbody>
-            {REQUIRED_DOCS.map((name, i) => (
-              <tr key={i} className="border-b border-gray-50 last:border-b-0">
-                <td className="px-5 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center shrink-0">
+        <div className="px-5 py-3 border-b border-gray-100">
+          <p className="text-xs font-semibold text-gray-700">Обязательные документы</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">Только PDF формат • Максимум 10 МБ</p>
+        </div>
+        <div className="divide-y divide-gray-50">
+          {DOC_TYPES.map(({ key, label }) => {
+            const doc = getDoc(key as DocType);
+            const isUploading = uploading === key;
+            return (
+              <div key={key} className="px-5 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#FEF2F2" }}>
                       <svg className="w-4 h-4" style={{ color: "#EF4444" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
                       </svg>
                     </div>
-                    <span className="text-gray-700 font-medium">{name}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-800 leading-tight">{label}</p>
+                      {doc ? (
+                        <div className="mt-1.5 space-y-1">
+                          <DocStatusBadge status={doc.status} />
+                          <p className="text-[10px] text-gray-400 truncate">{doc.fileName}</p>
+                          {doc.status === "REJECTED" && doc.rejectReason && (
+                            <p className="text-[10px] leading-relaxed" style={{ color: "#EF4444" }}>
+                              Причина: {doc.rejectReason}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-gray-400 mt-0.5">Не загружен</p>
+                      )}
+                    </div>
                   </div>
-                </td>
-                <td className="px-5 py-3.5 text-gray-500">{docs[i]?.type ?? "PDF"}</td>
-                {allDone && <><td className="px-5 py-3.5 text-gray-500">{docs[i]?.date}</td><td className="px-5 py-3.5 text-gray-500">{docs[i]?.size}</td></>}
-                <td className="px-5 py-3.5 text-right">
-                  {docs[i] ? (
-                    <button className="px-4 py-1.5 text-xs font-bold text-white rounded-lg" style={{ background: BLUE }}>открыть</button>
-                  ) : (
-                    <button onClick={() => handleUploadClick(i)} className="px-4 py-1.5 text-xs font-bold text-white rounded-lg" style={{ background: GREEN }}>загрузить</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!allDone && <p className="text-right text-[10px] text-gray-400 px-5 pb-3">* Обязательно загрузить эти документы</p>}
-      </div>
-      {allDone && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#EFF6FF" }}>
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-          </div>
-          <div>
-            <p className="font-bold text-gray-800 text-sm">Безопасность</p>
-            <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">Ваши документы защищены и доступны только вам и доверенным лицам. Все данные хранятся в зашифрованном виде и не передаются третьим лицам.</p>
-          </div>
+                  <div className="flex gap-2 shrink-0">
+                    {doc && (
+                      <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
+                        className="px-3 py-1.5 text-[10px] font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                        Открыть
+                      </a>
+                    )}
+                    <button
+                      onClick={() => handleUploadClick(key as DocType)}
+                      disabled={isUploading}
+                      className="px-3 py-1.5 text-[10px] font-bold text-white rounded-lg transition-opacity hover:opacity-90 disabled:opacity-60"
+                      style={{ background: doc?.status === "APPROVED" ? "#9ca3af" : doc ? "#F59E0B" : GREEN }}
+                    >
+                      {isUploading ? "..." : doc?.status === "APPROVED" ? "Принято" : doc ? "Обновить" : "Загрузить"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      )}
+        <div className="px-5 pb-3 pt-1">
+          <p className="text-[10px] text-gray-400">* Все три документа обязательны для получения доступа к функциям платформы</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex items-start gap-4">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#EFF6FF" }}>
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+        </div>
+        <div>
+          <p className="font-bold text-gray-800 text-sm">Безопасность документов</p>
+          <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">Ваши документы защищены и доступны только вам и администраторам платформы. Данные хранятся в зашифрованном виде.</p>
+        </div>
+      </div>
     </div>
   );
+}
+
+/* ─────────────── doc access hook ─────────────── */
+function useDocAccess() {
+  const [docs, setDocs] = useState<UserDoc[]>([]);
+  useEffect(() => {
+    api.getMyDocuments().then((list: any[]) => setDocs(list)).catch(() => {});
+  }, []);
+  const approvedTypes = new Set(docs.filter(d => d.status === "APPROVED").map(d => d.documentType));
+  const allApproved = DOC_TYPES.every(dt => approvedTypes.has(dt.key as DocType));
+  const missingDocs = DOC_TYPES.filter(dt => {
+    const d = docs.find(doc => doc.documentType === dt.key);
+    if (!d) return true;
+    if (d.status === "REJECTED") return true;
+    return false;
+  });
+  const pendingDocs = DOC_TYPES.filter(dt => docs.find(doc => doc.documentType === dt.key)?.status === "PENDING");
+  return { allApproved, missingDocs, pendingDocs, docs };
 }
 
 function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
   onDirtyChange: (dirty: boolean) => void;
   settingsSaveRef: React.MutableRefObject<(() => void) | null>;
 }) {
-  const { currentUser, updateProfile, logout } = useAuth();
+  const { currentUser, updateProfile, uploadAvatar, deleteAvatar, updateCategories, deleteAccount, logout } = useAuth();
   if (!currentUser) return null;
   const u = currentUser;
 
@@ -2310,10 +3693,14 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
   const [phone, setPhone] = useState(u.phone);
   const [city, setCity] = useState(u.city ?? "almaty");
   const [role, setRole] = useState(u.role);
-  const [categories, setCategories] = useState<string[]>(u.role === "offer-help" ? ["shopping", "household", "medical"] : []);
+  const [categories, setCategories] = useState<string[]>(u.categories ?? []);
+  const [aboutMe, setAboutMe] = useState(u.aboutMe ?? "");
   const [emailEditing, setEmailEditing] = useState(false);
   const [phoneEditing, setPhoneEditing] = useState(false);
-  const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
+  const [avatarSrc, setAvatarSrc] = useState<string | null>(u.avatarUrl ?? null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -2322,7 +3709,8 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
   const initRef = useRef({
     firstName: u.firstName, lastName: u.lastName, email: u.email,
     phone: u.phone, city: u.city ?? "almaty", role: u.role,
-    categories: (u.role === "offer-help" ? ["shopping", "household", "medical"] : []).join(","),
+    categories: (u.categories ?? []).join(","),
+    aboutMe: u.aboutMe ?? "",
   });
 
   const isDirty =
@@ -2332,14 +3720,27 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
     phone !== initRef.current.phone ||
     city !== initRef.current.city ||
     role !== initRef.current.role ||
-    (role === "offer-help" && categories.join(",") !== initRef.current.categories);
+    aboutMe !== initRef.current.aboutMe ||
+    avatarFile !== null ||
+    (role === "volunteer" && categories.join(",") !== initRef.current.categories);
 
-  useEffect(() => { onDirtyChange(isDirty); }, [firstName, lastName, email, phone, city, role, categories]);
+  useEffect(() => { onDirtyChange(isDirty); }, [firstName, lastName, email, phone, city, role, categories, aboutMe]);
 
-  settingsSaveRef.current = () => {
-    updateProfile({ firstName, lastName, email, phone, city, role });
-    initRef.current = { firstName, lastName, email, phone, city, role, categories: categories.join(",") };
-    onDirtyChange(false);
+  settingsSaveRef.current = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (avatarFile) await uploadAvatar(avatarFile);
+      await updateProfile({ firstName, lastName, email, phone, city, role, aboutMe });
+      await updateCategories(categories);
+      setAvatarFile(null);
+      initRef.current = { firstName, lastName, email, phone, city, role, categories: categories.join(","), aboutMe };
+      onDirtyChange(false);
+    } catch {
+      setSaveError("Не удалось сохранить. Попробуйте ещё раз.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSave = () => { settingsSaveRef.current?.(); };
@@ -2385,35 +3786,44 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center gap-3">
             <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/gif" className="hidden"
-              onChange={e => { if (e.target.files?.[0]) setAvatarSrc(URL.createObjectURL(e.target.files[0])); }} />
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setAvatarFile(file);
+                setAvatarSrc(URL.createObjectURL(file));
+              }} />
             <button onClick={() => avatarInputRef.current?.click()}
               className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white rounded-xl hover:opacity-90 transition-opacity"
               style={{ background: BLUE }}>
               + Изменить изображение
             </button>
-            <button onClick={() => setAvatarSrc(null)}
+            <button onClick={async () => {
+              setAvatarSrc(null);
+              setAvatarFile(null);
+              try { await deleteAvatar(); } catch { }
+            }}
               className="px-4 py-2 text-xs font-semibold rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
               Удалить изображение
             </button>
           </div>
           <p className="text-[11px] text-gray-400">Мы поддерживаем формат PNG, JPEG и GIF размером менее 2 МБ</p>
           <div className="flex gap-2">
-            <button onClick={() => setRole("seek-help")}
+            <button onClick={() => setRole("elderly")}
               className="px-4 py-1.5 text-xs font-semibold rounded-xl transition-colors"
-              style={role === "seek-help" ? { background: BLUE, color: "white", border: "none" } : { background: "white", color: BLUE, border: `1px solid ${BLUE}` }}>
+              style={role === "elderly" ? { background: BLUE, color: "white", border: "none" } : { background: "white", color: BLUE, border: `1px solid ${BLUE}` }}>
               Запросить помощь
             </button>
-            <button onClick={() => setRole("offer-help")}
+            <button onClick={() => setRole("volunteer")}
               className="px-4 py-1.5 text-xs font-semibold rounded-xl transition-colors"
-              style={role === "offer-help" ? { background: BLUE, color: "white", border: "none" } : { background: "white", color: BLUE, border: `1px solid ${BLUE}` }}>
+              style={role === "volunteer" ? { background: BLUE, color: "white", border: "none" } : { background: "white", color: BLUE, border: `1px solid ${BLUE}` }}>
               Оказать помощь
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── Categories (offer-help only) ── */}
-      {role === "offer-help" && (
+      {/* ── Categories (volunteer only) ── */}
+      {role === "volunteer" && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-gray-700">Категории</label>
@@ -2500,11 +3910,34 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
           </div>
         </div>
 
+        {role === "volunteer" && (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-gray-700">Кратко про себя</label>
+              <span className="text-[10px] text-gray-400">
+                {aboutMe.trim() ? aboutMe.trim().split(/\s+/).length : 0} / 100 слов
+              </span>
+            </div>
+            <textarea
+              value={aboutMe}
+              onChange={e => setAboutMe(e.target.value)}
+              placeholder="Расскажите о себе: опыт, навыки, чем можете помочь..."
+              rows={3}
+              maxLength={800}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs outline-none resize-none focus:border-blue-400 transition-all"
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">Этот текст будет виден в каталоге помощников</p>
+          </div>
+        )}
+
+        {saveError && (
+          <p className="text-xs text-red-500 text-right">{saveError}</p>
+        )}
         <div className="flex justify-end">
-          <button onClick={handleSave} disabled={!isDirty}
+          <button onClick={handleSave} disabled={!isDirty || saving}
             className="px-6 py-2.5 text-xs font-bold text-white rounded-xl transition-opacity"
-            style={{ background: isDirty ? GREEN : "#9CA3AF", cursor: isDirty ? "pointer" : "not-allowed", opacity: isDirty ? 1 : 0.7 }}>
-            сохранить
+            style={{ background: (isDirty && !saving) ? GREEN : "#9CA3AF", cursor: (isDirty && !saving) ? "pointer" : "not-allowed", opacity: (isDirty && !saving) ? 1 : 0.7 }}>
+            {saving ? "Сохраняем..." : "сохранить"}
           </button>
         </div>
       </div>
@@ -2543,7 +3976,9 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
 
       {showPasswordModal && <PasswordResetModal onClose={() => setShowPasswordModal(false)} />}
       {showCategoryModal && <CategoryPickerModal selected={categories} onToggle={k => setCategories(p => p.includes(k) ? p.filter(c => c !== k) : [...p, k])} onClose={() => setShowCategoryModal(false)} />}
-      {showDeleteModal && <DeleteAccountModal onClose={() => setShowDeleteModal(false)} onConfirm={() => { logout(); }} />}
+      {showDeleteModal && <DeleteAccountModal onClose={() => setShowDeleteModal(false)} onConfirm={async () => {
+        try { await deleteAccount(); } catch { logout(); }
+      }} />}
     </div>
   );
 }
@@ -2559,21 +3994,121 @@ function ComingSoon() {
 }
 
 /* ─────────────── main content area ─────────────── */
-function DashboardContent({ activeNav, userId, userRole, firstName, openedChatId, setOpenedChatId, onSettingsDirtyChange, settingsSaveRef }: {
+function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName, openedChat, setOpenedChat, onSettingsDirtyChange, settingsSaveRef }: {
   activeNav: NavKey;
-  userId: number;
+  setActiveNav: (nav: NavKey) => void;
+  userId: string;
   userRole: string;
   firstName: string;
-  openedChatId: number | null;
-  setOpenedChatId: (id: number | null) => void;
+  openedChat: Chat | null;
+  setOpenedChat: (chat: Chat | null) => void;
   onSettingsDirtyChange: (dirty: boolean) => void;
   settingsSaveRef: React.MutableRefObject<(() => void) | null>;
 }) {
   const { t } = useLanguage();
+  const isVolunteer = userRole === "volunteer";
   const [activeTab, setActiveTab] = useState<TabKey>("create");
   const [settingsDirtyLocal, setSettingsDirtyLocal] = useState(false);
   const [pendingTab, setPendingTab] = useState<TabKey | null>(null);
   const [showUnsavedTab, setShowUnsavedTab] = useState(false);
+  const [realtimeNotifs, setRealtimeNotifs] = useState<NotifItem[]>([]);
+  const [cancelledRequestId, setCancelledRequestId] = useState<string | null>(null);
+  const [declinedRequestId, setDeclinedRequestId] = useState<string | null>(null);
+  const [acceptedRequestId, setAcceptedRequestId] = useState<string | null>(null);
+  const [activeReqsVersion, setActiveReqsVersion] = useState(0);
+  const notifStompRef = useRef<Client | null>(null);
+
+  useEffect(() => {
+    api.getNotifications()
+      .then(list => setRealtimeNotifs(list.map(mapBackendNotification)))
+      .catch(() => { });
+  }, [userId]);
+
+  useEffect(() => {
+    const wsUrl = api.getWsUrl();
+    if (!wsUrl) return;
+    const client = new Client({
+      brokerURL: wsUrl,
+      reconnectDelay: 5000,
+      onConnect: () => {
+        client.subscribe(`/topic/notifications/${userId}`, (msg) => {
+          try {
+            const data = JSON.parse(msg.body);
+            const now = new Date();
+            const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+            const ts = now.toISOString();
+
+            if (data.type === "NEW_RESPONSE") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "new_response" as const,
+                helperName: data.volunteerName, service: data.requestTitle,
+                responseId: data.responseId, time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "REQUEST_ACCEPTED") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "accepted" as const,
+                helperName: data.volunteerName, service: data.requestTitle,
+                time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "RESPONSE_ACCEPTED") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "response_accepted" as const,
+                service: data.requestTitle, helperName: data.volunteerName, time, timestamp: ts,
+              }, ...prev]);
+              setActiveReqsVersion(v => v + 1);
+              setAcceptedRequestId(data.requestId);
+            } else if (data.type === "RESPONSE_DECLINED") {
+              setDeclinedRequestId(data.requestId);
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "response_declined" as const,
+                service: data.requestTitle, helperName: data.volunteerName, time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "REQUEST_CANCELLED") {
+              setCancelledRequestId(data.requestId);
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "cancelled" as const,
+                service: data.requestTitle, time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "REQUEST_COMPLETED") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "request_completed" as const,
+                service: data.requestTitle, helperName: data.volunteerName, requestId: data.requestId,
+                actorId: data.actorId ?? undefined, time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "NEW_INVITE") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "new_invite" as const,
+                service: data.requestTitle, helperName: data.volunteerName, requestId: data.requestId, time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "INVITE_ACCEPTED") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "invite_accepted" as const,
+                service: data.requestTitle, helperName: data.volunteerName, requestId: data.requestId, time, timestamp: ts,
+              }, ...prev]);
+              setActiveReqsVersion(v => v + 1);
+            } else if (data.type === "INVITE_DECLINED") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "invite_declined" as const,
+                service: data.requestTitle, helperName: data.volunteerName, requestId: data.requestId, time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "DOC_REVIEWED") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "doc_reviewed" as const,
+                service: data.requestTitle, helperName: data.volunteerName, time, timestamp: ts,
+              }, ...prev]);
+            }
+          } catch { /* ignore malformed messages */ }
+        });
+      },
+    });
+    client.activate();
+    notifStompRef.current = client;
+    return () => { client.deactivate(); };
+  }, [userId]);
+
+  useEffect(() => {
+    if (isVolunteer && activeTab === "search") setActiveTab("create");
+  }, [isVolunteer]);
 
   const handleDirtyChange = (dirty: boolean) => {
     setSettingsDirtyLocal(dirty);
@@ -2601,26 +4136,82 @@ function DashboardContent({ activeNav, userId, userRole, firstName, openedChatId
     if (pendingTab) { setActiveTab(pendingTab); setPendingTab(null); }
   };
 
+  const handleOpenChat = (chat: Chat) => {
+    setActiveNav("messages");
+    setOpenedChat(chat);
+  };
+
+  const [processingResponseId, setProcessingResponseId] = useState<string | null>(null);
+
+  const handleAcceptResponse = async (responseId: string) => {
+    setProcessingResponseId(responseId);
+    try {
+      await api.acceptResponse(responseId);
+      // найти requestId из уведомления чтобы передать волонтёру
+      const notif = realtimeNotifs.find(n => n.responseId === responseId);
+      setRealtimeNotifs(prev =>
+        prev.map(n => n.responseId === responseId
+          ? { ...n, responseId: undefined, responseStatus: "accepted" as const }
+          : n)
+      );
+      setActiveReqsVersion(v => v + 1);
+      if (notif?.requestId) setAcceptedRequestId(notif.requestId);
+    } catch (e) {
+      console.error("[RESPONSE] accept failed", e);
+    } finally {
+      setProcessingResponseId(null);
+    }
+  };
+
+  const handleDeclineResponse = async (responseId: string) => {
+    setProcessingResponseId(responseId);
+    try {
+      await api.declineResponse(responseId);
+      setRealtimeNotifs(prev =>
+        prev.map(n => n.responseId === responseId
+          ? { ...n, responseId: undefined, responseStatus: "declined" as const }
+          : n)
+      );
+    } catch (e) {
+      console.error("[RESPONSE] decline failed", e);
+    } finally {
+      setProcessingResponseId(null);
+    }
+  };
+
   if (activeNav === "messages") {
-    if (openedChatId !== null) {
-      const conv = CONVERSATIONS.find(c => c.id === openedChatId);
-      if (!conv) return null;
+    if (openedChat !== null) {
       return (
         <div style={{ height: "calc(100vh - 108px)" }}>
-          <ChatDetail conv={conv} />
+          <ChatDetail chat={openedChat} myId={userId} />
         </div>
       );
     }
-    return <MessagesContent onOpenChat={setOpenedChatId} />;
+    return <MessagesContent onOpenChat={setOpenedChat} myId={userId} />;
   }
 
-  if (activeNav === "requests") return <MyRequestsContent userId={userId} />;
+  if (activeNav === "requests") return isVolunteer
+    ? <MyVolunteerRequestsContent cancelledRequestId={cancelledRequestId} />
+    : <MyRequestsContent userId={userId} />;
+
+  if (activeNav === "statistics") return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <iframe
+        title="диплом"
+        width="100%"
+        height="541"
+        src="https://app.powerbi.com/reportEmbed?reportId=9f87d303-055b-415c-a029-055439ae653a&autoAuth=true&ctid=347fd89f-696a-49ca-9f8b-9724f5750471"
+        frameBorder={0}
+        allowFullScreen
+      />
+    </div>
+  );
 
   if (activeNav !== "dashboard") return <ComingSoon />;
 
   const tabs: { key: TabKey; label: string }[] = [
-    { key: "create", label: t("dashboard.tabCreate") },
-    { key: "search", label: t("dashboard.tabSearch") },
+    { key: "create", label: isVolunteer ? "Мои задачи" : t("dashboard.tabCreate") },
+    ...(!isVolunteer ? [{ key: "search" as TabKey, label: t("dashboard.tabSearch") }] : []),
     { key: "notifications", label: t("dashboard.tabNotifications") },
     { key: "settings", label: t("dashboard.tabSettings") },
   ];
@@ -2629,19 +4220,19 @@ function DashboardContent({ activeNav, userId, userRole, firstName, openedChatId
     <>
       <div className="space-y-4">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="flex">
+          <div className="flex overflow-x-auto snap-x" style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
             {tabs.map(tab => (
               <button key={tab.key} onClick={() => handleTabClick(tab.key)}
-                className="px-5 py-3 text-xs font-semibold transition-colors whitespace-nowrap border-b-2"
+                className="px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 shrink-0 snap-start"
                 style={activeTab === tab.key ? { color: BLUE, borderColor: BLUE, background: "white" } : { color: "#6b7280", borderColor: "transparent" }}>
                 {tab.label}
               </button>
             ))}
           </div>
         </div>
-        {activeTab === "create" && (userRole === "offer-help" ? <HelperDashboard user={{ firstName }} /> : <CreateRequestTab userId={userId} />)}
+        {activeTab === "create" && (isVolunteer ? <HelperDashboard user={{ firstName }} onOpenChat={handleOpenChat} cancelledRequestId={cancelledRequestId} declinedRequestId={declinedRequestId} acceptedRequestId={acceptedRequestId} activeReqsVersion={activeReqsVersion} /> : <CreateRequestTab userId={userId} version={activeReqsVersion} />)}
         {activeTab === "search" && <FindHelpersTab userId={userId} />}
-        {activeTab === "notifications" && <NotificationsTab />}
+        {activeTab === "notifications" && <NotificationsTab realtimeNotifs={realtimeNotifs} onAcceptResponse={handleAcceptResponse} onDeclineResponse={handleDeclineResponse} processingResponseId={processingResponseId} userId={userId} onUpdateNotif={(id, patch) => setRealtimeNotifs(prev => prev.map(n => n.id === id ? { ...n, ...patch } : n))} />}
         {activeTab === "settings" && <AccountSettingsTab onDirtyChange={handleDirtyChange} settingsSaveRef={settingsSaveRef} />}
       </div>
       {showUnsavedTab && (
@@ -2656,21 +4247,23 @@ function DashboardPage() {
   const { currentUser } = useAuth();
   const { t } = useLanguage();
   const [activeNav, setActiveNav] = useState<NavKey>("dashboard");
-  const [openedChatId, setOpenedChatId] = useState<number | null>(null);
+  const [openedChat, setOpenedChat] = useState<Chat | null>(null);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [pendingNav, setPendingNav] = useState<NavKey | null>(null);
   const [showNavUnsaved, setShowNavUnsaved] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const settingsSaveRef = useRef<(() => void) | null>(null);
 
   if (!currentUser) return null;
 
   const handleNavChange = (key: NavKey) => {
+    setMobileMenuOpen(false);
     if (settingsDirty && activeNav === "dashboard") {
       setPendingNav(key);
       setShowNavUnsaved(true);
     } else {
       setActiveNav(key);
-      setOpenedChatId(null);
+      setOpenedChat(null);
     }
   };
 
@@ -2680,28 +4273,66 @@ function DashboardPage() {
   };
 
   const headerLeft = navTitleMap[activeNav] ? (
-    <button
-      onClick={() => {
-        if (activeNav === "messages" && openedChatId !== null) setOpenedChatId(null);
-        else handleNavChange("dashboard");
-      }}
-      className="flex items-center gap-1.5 font-bold text-sm transition-opacity hover:opacity-75"
-      style={{ color: BLUE }}
-    >
-      <ArrowLeft className="w-4 h-4" />
-      {navTitleMap[activeNav]}
-    </button>
+    <div className="flex items-center gap-3">
+      <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-gray-700 hover:text-blue-500 transition-colors">
+        <Menu className="w-5 h-5" />
+      </button>
+      <button
+        onClick={() => {
+          if (activeNav === "messages" && openedChat !== null) setOpenedChat(null);
+          else handleNavChange("dashboard");
+        }}
+        className="flex items-center gap-1.5 font-bold text-sm transition-opacity hover:opacity-75"
+        style={{ color: BLUE }}
+      >
+        <ArrowLeft className="w-4 h-4" />
+        {navTitleMap[activeNav]}
+      </button>
+    </div>
   ) : (
-    <p className="text-sm font-bold" style={{ color: BLUE }}>{t("dashboard.title")}</p>
+    <div className="flex items-center gap-3">
+      <button onClick={() => setMobileMenuOpen(true)} className="md:hidden text-gray-700 hover:text-blue-500 transition-colors">
+        <Menu className="w-5 h-5" />
+      </button>
+      <p className="text-sm font-bold" style={{ color: BLUE }}>{t("dashboard.title")}</p>
+    </div>
   );
 
   return (
     <div className="min-h-screen flex bg-gray-50">
-      <Sidebar activeNav={activeNav} setActiveNav={handleNavChange} user={currentUser} />
+      <div className="hidden md:flex">
+        <Sidebar activeNav={activeNav} setActiveNav={handleNavChange} user={currentUser} />
+      </div>
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50">
-        <div className="p-4 flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-3 flex items-center justify-between shrink-0">
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-[100] flex bg-black/40 backdrop-blur-sm md:hidden" onClick={() => setMobileMenuOpen(false)}>
+          <div className="w-[85%] max-w-[320px] h-full bg-[#dae9f4] rounded-r-3xl overflow-hidden flex flex-col pt-6 relative shadow-2xl" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setMobileMenuOpen(false)} className="absolute top-6 right-6 text-[#4B688A] hover:text-[#2E486D] transition-colors p-1">
+              <X className="w-6 h-6" />
+            </button>
+            <div className="px-6 mb-8 flex items-center gap-3">
+              <img src={logoImg} alt="Qamqor Logo" className="w-12 h-12 rounded-full border-2 border-[#5bb8f5] bg-white object-contain p-1 shadow-sm" />
+              <p className="font-bold text-[#2E486D] text-2xl tracking-wide uppercase">Qamqor</p>
+            </div>
+            <nav className="flex-1 px-4 flex flex-col gap-1.5">
+              <button onClick={() => handleNavChange("dashboard")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav === "dashboard" ? "bg-white/60 font-bold text-[#2E486D] shadow-sm" : "text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navDashboard")}</button>
+              <button onClick={() => handleNavChange("messages")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav === "messages" ? "bg-white/60 font-bold text-[#2E486D] shadow-sm" : "text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navMessages")}</button>
+              <button onClick={() => handleNavChange("requests")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav === "requests" ? "bg-white/60 font-bold text-[#2E486D] shadow-sm" : "text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navMyRequests")}</button>
+              <button onClick={() => handleNavChange("statistics")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav === "statistics" ? "bg-white/60 font-bold text-[#2E486D] shadow-sm" : "text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navStatistics")}</button>
+              <button onClick={() => handleNavChange("support")} className={`px-4 py-3 text-left text-[15px] rounded-xl transition-all ${activeNav === "support" ? "bg-white/60 font-bold text-[#2E486D] shadow-sm" : "text-[#4B688A] font-medium hover:bg-white/40"}`}>{t("dashboard.navSupport")}</button>
+            </nav>
+            <div className="p-6 pb-8 mt-auto">
+              <button onClick={() => currentUser && window.location.replace("/")} className="bg-white rounded-full px-5 py-3.5 text-red-500 font-semibold flex items-center justify-center gap-2 border border-white shadow-sm w-full hover:bg-red-50 transition-colors">
+                <LogOut className="w-4 h-4" /> {t("dashboard.navLogout")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col h-[100dvh] overflow-hidden bg-gray-50">
+        <div className="p-3 md:p-4 flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between shrink-0 p-3 md:px-5 md:py-3">
             {headerLeft}
             <div className="flex items-center gap-2">
               <AccessibilityToggle />
@@ -2711,11 +4342,12 @@ function DashboardPage() {
 
           <DashboardContent
             activeNav={activeNav}
+            setActiveNav={setActiveNav}
             userId={currentUser.id}
             userRole={currentUser.role}
             firstName={currentUser.firstName}
-            openedChatId={openedChatId}
-            setOpenedChatId={setOpenedChatId}
+            openedChat={openedChat}
+            setOpenedChat={setOpenedChat}
             onSettingsDirtyChange={setSettingsDirty}
             settingsSaveRef={settingsSaveRef}
           />
@@ -2728,12 +4360,12 @@ function DashboardPage() {
             settingsSaveRef.current?.();
             setSettingsDirty(false);
             setShowNavUnsaved(false);
-            if (pendingNav) { setActiveNav(pendingNav); setOpenedChatId(null); setPendingNav(null); }
+            if (pendingNav) { setActiveNav(pendingNav); setOpenedChat(null); setPendingNav(null); }
           }}
           onDiscard={() => {
             setSettingsDirty(false);
             setShowNavUnsaved(false);
-            if (pendingNav) { setActiveNav(pendingNav); setOpenedChatId(null); setPendingNav(null); }
+            if (pendingNav) { setActiveNav(pendingNav); setOpenedChat(null); setPendingNav(null); }
           }}
         />
       )}

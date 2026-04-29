@@ -10,7 +10,7 @@ export * from './IKamkorApi';
 function createApiInstance(): IKamkorApi {
     // Use Vite's environment variables to determine mode
     const apiMode = import.meta.env.VITE_API_MODE;
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.qamqor.kz/v1';
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.qamqor.kz/api/v1';
 
     if (apiMode === 'real') {
         console.log('🌐 Initializing REAL Kamkor API');

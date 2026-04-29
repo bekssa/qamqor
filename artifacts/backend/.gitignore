@@ -1,0 +1,11 @@
+target/
+web/
+.env
+*.jar
+*.class
+.idea/
+*.iml
+.DS_Store
+mvnw
+mvnw.cmd
+.mvn/

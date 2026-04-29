@@ -1,5 +1,5 @@
 import { IKamkorApi } from './IKamkorApi';
-import { User, ServiceRequest, Review } from './types';
+import { User, ServiceRequest, Review, Chat, Message } from './types';
 
 // In-memory mock databases
 let mockUsers: User[] = [
@@ -52,16 +52,32 @@ export class MockKamkorApi implements IKamkorApi {
         return [...mockRequests];
     }
 
+    async getMyRequests(): Promise<ServiceRequest[]> {
+        await delay();
+        return [...mockRequests];
+    }
+
+    async getAssignedRequests(): Promise<ServiceRequest[]> {
+        await delay();
+        return mockRequests.filter(r => r.executorId === 'u1');
+    }
+
+    async getAvailableRequests(): Promise<ServiceRequest[]> {
+        await delay();
+        return mockRequests.filter(r => r.status === 'open');
+    }
+
     async getRequestById(id: string): Promise<ServiceRequest | null> {
         await delay();
         return mockRequests.find(r => r.id === id) || null;
     }
 
-    async createRequest(data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status'>): Promise<ServiceRequest> {
+    async createRequest(data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status' | 'authorId' | 'executorId'>): Promise<ServiceRequest> {
         await delay();
         const newRequest: ServiceRequest = {
             ...data,
             id: `req${Date.now()}`,
+            authorId: 'u1',
             status: 'open',
             createdAt: new Date().toISOString(),
         };
@@ -104,17 +120,99 @@ export class MockKamkorApi implements IKamkorApi {
         return newReview;
     }
 
+    async deleteAvatar() {
+        await delay();
+        return { user: { ...mockUsers[0], avatarUrl: undefined, firstName: 'Анна', lastName: 'Иванова', birthDate: undefined, city: undefined, categories: [] } };
+    }
+
+    async updateUserCategories(keys: string[]) {
+        await delay();
+        return { user: { ...mockUsers[0], firstName: 'Анна', lastName: 'Иванова', birthDate: undefined, city: undefined, categories: keys } };
+    }
+
+    async getCategories() {
+        await delay();
+        return [
+            { key: 'household', label: 'Бытовая помощь', description: 'уборка, приготовление еды' },
+            { key: 'medical', label: 'Медицинская помощь', description: 'покупка лекарств, сопровождение' },
+            { key: 'escort', label: 'Сопровождение', description: 'поход в больницу, прогулка' },
+            { key: 'homework', label: 'Домашние работы', description: 'починка, мелкий ремонт' },
+            { key: 'shopping', label: 'Покупки', description: 'продукты, хозяйственные товары' },
+        ];
+    }
+
+    async deleteAccount(): Promise<void> {
+        await delay();
+    }
+
+    async getMe() {
+        await delay();
+        return { user: { ...mockUsers[0], firstName: 'Анна', lastName: 'Иванова', birthDate: undefined, city: undefined } };
+    }
+
+    async uploadAvatar(_file: File) {
+        await delay();
+        return { user: { ...mockUsers[0], firstName: 'Анна', lastName: 'Иванова', birthDate: undefined, city: undefined } };
+    }
+
+    async updateUserProfile(data: {
+        firstName?: string; lastName?: string; phone?: string;
+        city?: string; role?: string;
+    }) {
+        await delay();
+        const updated = { ...mockUsers[0], ...data, name: `${data.lastName ?? ''} ${data.firstName ?? ''}`.trim() };
+        mockUsers[0] = updated;
+        return { user: { ...updated, birthDate: undefined, city: data.city } };
+    }
+
     async sendOtp(email: string): Promise<boolean> {
         await delay();
         console.log(`[МОК АПИ] 📧 Имитация отправки кода на почту ${email}. Реальная отправка будет после внедрения Spring Boot бэкенда.`);
         return true;
     }
 
-    async verifyOtp(email: string, code: string): Promise<{ user: User, token: string }> {
+    async verifyOtp(email: string, code: string, _password?: string, _regData?: {
+        firstName?: string; lastName?: string; phone?: string;
+        role?: string; birthDate?: string; city?: string;
+    }): Promise<{ user: User, token: string }> {
         await delay();
         if (code === "1234") {
             return { token: "mock_token_abc123", user: mockUsers[0] };
         }
         throw new Error("Неверный СМС код");
     }
+
+    async loginWithPassword(_email: string, _password: string): Promise<{ user: User; token: string }> {
+        await delay();
+        return { token: "mock_token_abc123", user: mockUsers[0] };
+    }
+
+    async updatePassword(_password: string): Promise<void> {
+        await delay();
+    }
+
+    async getChats(): Promise<Chat[]> { return []; }
+    async openChat(_otherUserId: string): Promise<Chat> {
+        return { id: 'mock-chat-1', participants: [], createdAt: new Date().toISOString() };
+    }
+    async getMessages(_chatId: string): Promise<Message[]> { return []; }
+    getWsUrl(): string { return ''; }
+
+    async respondToRequest(_id: string): Promise<void> { await delay(); }
+    async acceptResponse(_responseId: string): Promise<void> { await delay(); }
+    async declineResponse(_responseId: string): Promise<void> { await delay(); }
+    async getMyResponses(): Promise<{ requestId: string; status: import('./types').ResponseStatus }[]> { return []; }
+    async getNotifications(): Promise<{ id: string; type: string; requestId: string; requestTitle: string; actorName: string | null; actorId: string | null; responseId: string | null; status: string | null; createdAt: string }[]> { return []; }
+    async inviteHelper(_requestId: string, _volunteerId: string): Promise<void> { await delay(); }
+    async replyToInvite(_requestId: string, _accepted: boolean): Promise<void> { await delay(); }
+    async uploadDocument(_documentType: string, _file: File): Promise<import('./types').UserDocument> { await delay(); return {} as any; }
+    async getMyDocuments(): Promise<import('./types').UserDocument[]> { return []; }
+    async getAdminPendingDocuments(): Promise<import('./types').UserDocument[]> { return []; }
+    async getAdminAllDocuments(): Promise<import('./types').UserDocument[]> { return []; }
+    async approveDocument(_id: string): Promise<import('./types').UserDocument> { return {} as any; }
+    async rejectDocument(_id: string, _reason: string): Promise<import('./types').UserDocument> { return {} as any; }
+    async getModerationReports(): Promise<import('./types').ModerationReport[]> { return []; }
+    async reviewModerationReport(_id: string): Promise<import('./types').ModerationReport> { return {} as any; }
+    async dismissModerationReport(_id: string): Promise<import('./types').ModerationReport> { return {} as any; }
+    async openAdminChat(_reportId: string): Promise<import('./types').ModerationReport> { return {} as any; }
 }
