@@ -326,14 +326,23 @@ function ViolationBadge({ code }: { code: string }) {
 }
 
 /* ── admin chat with user ── */
-function AdminUserChat({ chatId, adminId, onBack }: { chatId: string; adminId: string; onBack: () => void }) {
+function AdminUserChat({ chatId, adminId, userName, onBack }: {
+  chatId: string; adminId: string; userName?: string; onBack: () => void
+}) {
   const [messages, setMessages] = useState<{ id: number; senderId: string; text: string; timestamp: string }[]>([]);
   const [input, setInput] = useState("");
+  const [loadingMessages, setLoadingMessages] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const stompRef = useRef<Client | null>(null);
+  // Track locally-sent message IDs to avoid WebSocket echo duplicates
+  const sentIds = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    api.getMessages(chatId).then((list: any[]) => setMessages(list)).catch(() => {});
+    setLoadingMessages(true);
+    api.getMessages(chatId)
+      .then((list: any[]) => setMessages(list))
+      .catch(() => {})
+      .finally(() => setLoadingMessages(false));
   }, [chatId]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -346,7 +355,10 @@ function AdminUserChat({ chatId, adminId, onBack }: { chatId: string; adminId: s
       onConnect: () => {
         client.subscribe(`/topic/chat/${chatId}`, frame => {
           const msg = JSON.parse(frame.body);
-          if (msg.senderId !== adminId) setMessages(prev => [...prev, msg]);
+          // Skip echo of admin's own messages (already added optimistically)
+          if (msg.senderId === adminId && sentIds.current.has(msg.id)) return;
+          if (msg.senderId === adminId) return;
+          setMessages(prev => [...prev, msg]);
         });
       },
     });
@@ -357,11 +369,13 @@ function AdminUserChat({ chatId, adminId, onBack }: { chatId: string; adminId: s
 
   const handleSend = () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || !stompRef.current?.connected) return;
     setInput("");
+    const tmpId = Date.now();
     const now = new Date().toISOString();
-    setMessages(prev => [...prev, { id: Date.now(), senderId: adminId, text, timestamp: now }]);
-    stompRef.current?.publish({
+    sentIds.current.add(tmpId);
+    setMessages(prev => [...prev, { id: tmpId, senderId: adminId, text, timestamp: now }]);
+    stompRef.current.publish({
       destination: `/app/chat_${chatId}`,
       body: JSON.stringify({ senderId: adminId, text }),
     });
@@ -372,27 +386,49 @@ function AdminUserChat({ chatId, adminId, onBack }: { chatId: string; adminId: s
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
 
+  const displayName = userName || "Пользователь";
+
   return (
     <div className="flex flex-col h-[calc(100vh-160px)] bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 shrink-0">
         <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <p className="font-bold text-gray-900 text-sm">Чат с пользователем</p>
+        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+          style={{ background: "linear-gradient(135deg,#5bb8f5,#3b82f6)" }}>
+          {displayName[0].toUpperCase()}
+        </div>
+        <div>
+          <p className="font-bold text-gray-900 text-sm">{displayName}</p>
+          <p className="text-[10px] text-gray-400">Чат с пользователем</p>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-gray-50">
-        {messages.map(msg => {
-          const isMe = msg.senderId === adminId;
-          return (
-            <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[65%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${isMe ? "text-white rounded-tr-sm" : "bg-white text-gray-800 rounded-tl-sm border border-gray-200"}`}
-                style={isMe ? { background: BLUE } : {}}>
-                {msg.text}
-                <span className={`text-[10px] ml-2 ${isMe ? "text-blue-100" : "text-gray-400"}`}>{fmtTime(msg.timestamp)}</span>
+        {loadingMessages ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-gray-400 text-sm">Загрузка...</p>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-gray-400 text-sm">Нет сообщений. Начните диалог.</p>
+          </div>
+        ) : (
+          messages.map(msg => {
+            const isMe = msg.senderId === adminId;
+            return (
+              <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                <span className="text-[10px] text-gray-400 mb-0.5 px-1">
+                  {isMe ? "Вы (Администратор)" : displayName}
+                </span>
+                <div className={`max-w-[65%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${isMe ? "text-white rounded-tr-sm" : "bg-white text-gray-800 rounded-tl-sm border border-gray-200"}`}
+                  style={isMe ? { background: BLUE } : {}}>
+                  {msg.text}
+                  <span className={`text-[10px] ml-2 ${isMe ? "text-blue-100" : "text-gray-400"}`}>{fmtTime(msg.timestamp)}</span>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
         <div ref={bottomRef} />
       </div>
       <div className="flex items-center gap-3 px-5 py-3 border-t border-gray-100 bg-white shrink-0">
@@ -400,7 +436,7 @@ function AdminUserChat({ chatId, adminId, onBack }: { chatId: string; adminId: s
           onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
           placeholder="Написать сообщение..."
           className="flex-1 text-xs text-gray-700 outline-none placeholder:text-gray-400 bg-transparent" />
-        <button onClick={handleSend} style={{ color: BLUE }}>
+        <button onClick={handleSend} disabled={!input.trim()} style={{ color: BLUE, opacity: input.trim() ? 1 : 0.4 }}>
           <Send className="w-5 h-5" />
         </button>
       </div>
@@ -417,6 +453,7 @@ function ModerationSection({ adminId }: { adminId: string }) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"ALL" | "PENDING" | "REVIEWED" | "DISMISSED">("PENDING");
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [activeChatUserName, setActiveChatUserName] = useState<string | undefined>(undefined);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const load = async () => {
@@ -434,7 +471,11 @@ function ModerationSection({ adminId }: { adminId: string }) {
     try {
       const updated = await api.openAdminChat(report.id);
       setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-      if (updated.adminChatId) { setActiveChatId(updated.adminChatId); setSub("chats"); }
+      if (updated.adminChatId) {
+        setActiveChatId(updated.adminChatId);
+        setActiveChatUserName(updated.senderName);
+        setSub("chats");
+      }
     } catch {} finally { setActionLoading(null); }
   };
 
@@ -454,6 +495,15 @@ function ModerationSection({ adminId }: { adminId: string }) {
     } catch {} finally { setActionLoading(null); }
   };
 
+  const handleBlock = async (report: ModerationReport) => {
+    if (report.senderBlocked) return;
+    setActionLoading(report.id + "_block");
+    try {
+      const updated = await api.blockUserFromReport(report.id);
+      setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+    } catch {} finally { setActionLoading(null); }
+  };
+
   // Chats with users from reports
   const adminChats = reports.filter(r => r.adminChatId).reduce<{ chatId: string; userName: string; reportId: string }[]>((acc, r) => {
     if (r.adminChatId && !acc.find(c => c.chatId === r.adminChatId)) {
@@ -465,7 +515,7 @@ function ModerationSection({ adminId }: { adminId: string }) {
   if (sub === "chats" && activeChatId) {
     return (
       <div className="space-y-4">
-        <AdminUserChat chatId={activeChatId} adminId={adminId} onBack={() => setActiveChatId(null)} />
+        <AdminUserChat chatId={activeChatId} adminId={adminId} userName={activeChatUserName} onBack={() => setActiveChatId(null)} />
       </div>
     );
   }
@@ -511,7 +561,7 @@ function ModerationSection({ adminId }: { adminId: string }) {
         ) : (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             {adminChats.map(c => (
-              <button key={c.chatId} onClick={() => setActiveChatId(c.chatId)}
+              <button key={c.chatId} onClick={() => { setActiveChatId(c.chatId); setActiveChatUserName(c.userName); }}
                 className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-b-0">
                 <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
                   style={{ background: "linear-gradient(135deg,#5bb8f5,#3b82f6)" }}>
@@ -571,7 +621,12 @@ function ModerationSection({ adminId }: { adminId: string }) {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      {report.senderBlocked && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: "#FEE2E2", color: "#EF4444" }}>
+                          <XCircle className="w-3 h-3" /> Заблокирован
+                        </span>
+                      )}
                       {report.status === "PENDING" && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: "#FEF9C3", color: "#CA8A04" }}>
                           <Clock className="w-3 h-3" /> Ожидает
@@ -617,7 +672,7 @@ function ModerationSection({ adminId }: { adminId: string }) {
 
                     {/* Actions */}
                     {report.status === "PENDING" && (
-                      <div className="flex gap-2 pt-1">
+                      <div className="flex flex-wrap gap-2 pt-1">
                         <button
                           onClick={() => handleOpenChat(report)}
                           disabled={actionLoading === report.id}
@@ -625,6 +680,14 @@ function ModerationSection({ adminId }: { adminId: string }) {
                           style={{ background: BLUE }}>
                           <MessageSquare className="w-3.5 h-3.5" />
                           {report.adminChatId ? "Открыть чат" : "Чат с пользователем"}
+                        </button>
+                        <button
+                          onClick={() => handleBlock(report)}
+                          disabled={report.senderBlocked || actionLoading === report.id + "_block"}
+                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50"
+                          style={{ background: report.senderBlocked ? "#9CA3AF" : "#EF4444" }}>
+                          <XCircle className="w-3.5 h-3.5" />
+                          {report.senderBlocked ? "Заблокирован" : "Заблокировать"}
                         </button>
                         <button
                           onClick={() => handleReview(report.id)}
@@ -644,13 +707,25 @@ function ModerationSection({ adminId }: { adminId: string }) {
                         </button>
                       </div>
                     )}
-                    {report.status === "REVIEWED" && report.adminChatId && (
-                      <button
-                        onClick={() => { setActiveChatId(report.adminChatId!); setSub("chats"); }}
-                        className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl border transition-colors hover:bg-blue-50"
-                        style={{ color: BLUE, borderColor: "#BFDBFE" }}>
-                        <MessageSquare className="w-3.5 h-3.5" /> Открыть чат
-                      </button>
+                    {report.status === "REVIEWED" && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {report.adminChatId && (
+                          <button
+                            onClick={() => { setActiveChatId(report.adminChatId!); setActiveChatUserName(report.senderName); setSub("chats"); }}
+                            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl border transition-colors hover:bg-blue-50"
+                            style={{ color: BLUE, borderColor: "#BFDBFE" }}>
+                            <MessageSquare className="w-3.5 h-3.5" /> Открыть чат
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleBlock(report)}
+                          disabled={report.senderBlocked || actionLoading === report.id + "_block"}
+                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50"
+                          style={{ background: report.senderBlocked ? "#9CA3AF" : "#EF4444" }}>
+                          <XCircle className="w-3.5 h-3.5" />
+                          {report.senderBlocked ? "Заблокирован" : "Заблокировать"}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

@@ -82,6 +82,8 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       # CORS – allow both local dev port and production frontend
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173}
+      # AI Key
+      GEMINI_KEY: ${GEMINI_KEY}
     ports:
       - "8080:8080"
 

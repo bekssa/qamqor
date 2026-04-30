@@ -45,6 +45,9 @@ public class ServiceRequestService {
 
     @Transactional
     public ServiceRequestDto create(CreateServiceRequestDto dto, User currentUser) {
+        if (currentUser.isBlocked()) {
+            throw new AppException("Ваш аккаунт заблокирован", HttpStatus.FORBIDDEN);
+        }
         log.info("[REQUEST] create authorId={} title='{}' category={} location={} price={} scheduledDate={}",
             currentUser.getId(), dto.title(), dto.category(), dto.location(), dto.price(), dto.scheduledDate());
 

@@ -10,7 +10,6 @@ import kz.qamqor.exception.AppException;
 import kz.qamqor.repository.ChatRepository;
 import kz.qamqor.repository.MessageRepository;
 import kz.qamqor.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -27,18 +26,18 @@ public class ChatService {
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
-    private final OpenAiModerationService openAiModerationService;
+    private final GeminiModerationService geminiModerationService;
     private final ModerationService moderationService;
 
     public ChatService(ChatRepository chatRepository, MessageRepository messageRepository,
                        UserRepository userRepository, SimpMessagingTemplate messagingTemplate,
-                       OpenAiModerationService openAiModerationService,
+                       GeminiModerationService geminiModerationService,
                        @Lazy ModerationService moderationService) {
         this.chatRepository = chatRepository;
         this.messageRepository = messageRepository;
         this.userRepository = userRepository;
         this.messagingTemplate = messagingTemplate;
-        this.openAiModerationService = openAiModerationService;
+        this.geminiModerationService = geminiModerationService;
         this.moderationService = moderationService;
     }
 
@@ -95,7 +94,7 @@ public class ChatService {
         boolean flagged = false;
         // Skip moderation for admin messages
         if (sender.getRole() != kz.qamqor.entity.User.Role.ADMIN) {
-            OpenAiModerationService.ModerationResult mod = openAiModerationService.check(dto.text());
+            GeminiModerationService.ModerationResult mod = geminiModerationService.check(dto.text());
             if (!mod.isClean()) {
                 flagged = true;
                 try {
@@ -116,8 +115,10 @@ public class ChatService {
 
         MessageDto saved = MessageDto.from(messageRepository.save(message));
 
-        // Push to WebSocket subscribers
-        messagingTemplate.convertAndSend("/topic/chat/" + chatId, saved);
+        // Flagged messages are held for admin review — do not broadcast to chat participants
+        if (!flagged) {
+            messagingTemplate.convertAndSend("/topic/chat/" + chatId, saved);
+        }
 
         return saved;
     }

@@ -62,6 +62,14 @@ public class ModerationController {
         return ResponseEntity.ok(moderationService.openAdminChat(id, currentUser.getId()));
     }
 
+    @Operation(summary = "Заблокировать отправителя сообщения")
+    @PostMapping("/reports/{id}/block-user")
+    public ResponseEntity<ModerationReportDto> blockUser(@PathVariable String id,
+                                                          @AuthenticationPrincipal User currentUser) {
+        requireAdmin(currentUser);
+        return ResponseEntity.ok(moderationService.blockUser(id, currentUser.getId()));
+    }
+
     private void requireAdmin(User user) {
         if (user == null || user.getRole() != User.Role.ADMIN) {
             throw new AppException("Forbidden", HttpStatus.FORBIDDEN);
