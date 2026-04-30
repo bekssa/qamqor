@@ -24,10 +24,10 @@ jobs:
       - name: Build image
         run: |
           docker build \
-            -f qamqor/artifacts/backend/Dockerfile \
+            -f artifacts/backend/Dockerfile \
             -t bekssa/qamqor-backend:latest \
             -t bekssa/qamqor-backend:${{ github.sha }} \
-            qamqor
+            .
 
       - name: Push image
         run: |
