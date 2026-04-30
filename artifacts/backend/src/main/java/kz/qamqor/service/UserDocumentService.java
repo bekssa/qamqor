@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 
 @Slf4j
@@ -34,13 +35,32 @@ public class UserDocumentService {
         String fileUrl = minioService.uploadDocument(userId, documentType, file);
         String fileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : documentType + ".pdf";
 
-        UserDocument doc = UserDocument.builder()
-            .userId(userId)
-            .documentType(documentType)
-            .fileName(fileName)
-            .fileUrl(fileUrl)
-            .status(UserDocument.Status.PENDING)
-            .build();
+        // Find all existing docs of this type for this user (may be >1 due to past bug)
+        List<UserDocument> existing = userDocumentRepository.findAllByUserId(userId).stream()
+            .filter(d -> documentType.equals(d.getDocumentType()))
+            .sorted(Comparator.comparing(UserDocument::getUploadedAt).reversed())
+            .collect(java.util.stream.Collectors.toList());
+
+        UserDocument doc;
+        if (!existing.isEmpty()) {
+            doc = existing.get(0); // reuse the most recent record
+            if (existing.size() > 1) {
+                userDocumentRepository.deleteAll(existing.subList(1, existing.size()));
+            }
+            doc.setFileName(fileName);
+            doc.setFileUrl(fileUrl);
+            doc.setStatus(UserDocument.Status.PENDING);
+            doc.setRejectReason(null);
+            doc.setReviewedAt(null);
+        } else {
+            doc = UserDocument.builder()
+                .userId(userId)
+                .documentType(documentType)
+                .fileName(fileName)
+                .fileUrl(fileUrl)
+                .status(UserDocument.Status.PENDING)
+                .build();
+        }
 
         doc = userDocumentRepository.save(doc);
         log.info("[DOC] Uploaded document id={} userId={} type={}", doc.getId(), userId, documentType);
@@ -51,8 +71,16 @@ public class UserDocumentService {
     }
 
     public List<UserDocumentDto> getMyDocuments(String userId) {
-        return userDocumentRepository.findAllByUserId(userId)
-            .stream().map(UserDocumentDto::from).toList();
+        // Return only the most recent document per type (guards against legacy duplicates)
+        return userDocumentRepository.findAllByUserId(userId).stream()
+            .collect(java.util.stream.Collectors.toMap(
+                UserDocument::getDocumentType,
+                d -> d,
+                (a, b) -> a.getUploadedAt().isAfter(b.getUploadedAt()) ? a : b
+            ))
+            .values().stream()
+            .map(UserDocumentDto::from)
+            .toList();
     }
 
     public List<UserDocumentDto> getPendingDocuments() {

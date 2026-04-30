@@ -32,6 +32,9 @@ public class RequestResponseService {
 
     @Transactional
     public void respond(String requestId, User volunteer) {
+        if (volunteer.isBlocked()) {
+            throw new AppException("Ваш аккаунт заблокирован", HttpStatus.FORBIDDEN);
+        }
         ServiceRequest request = requestRepository.findById(requestId)
             .orElseThrow(() -> new AppException("Request not found", HttpStatus.NOT_FOUND));
 
@@ -66,6 +69,9 @@ public class RequestResponseService {
 
     @Transactional
     public void accept(String responseId, User elderly) {
+        if (elderly.isBlocked()) {
+            throw new AppException("Ваш аккаунт заблокирован", HttpStatus.FORBIDDEN);
+        }
         RequestResponse response = responseRepository.findById(responseId)
             .orElseThrow(() -> new AppException("Response not found", HttpStatus.NOT_FOUND));
 

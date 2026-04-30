@@ -1,3 +1,12 @@
+import { useState, useRef, useEffect } from "react";
+import { useLocation } from "wouter";
+import { ChevronDown, Eye, EyeOff, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
+import { Popover, PopoverTrigger, PopoverContent } from "@shared/ui/popover";
+import { Calendar } from "@shared/ui/calendar";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@shared/ui/select";
+import { useLanguage } from "@features/language/model/context";
+import { useAuth } from "@features/auth/model/context";
+import logoImg from "@/assets/services/logo.png";
 
 const KAZAKHSTAN_CITIES = [
   "Алматы", "Астана", "Шымкент", "Караганда", "Актобе",
@@ -7,8 +16,6 @@ const KAZAKHSTAN_CITIES = [
 ];
 
 type Tab = "register" | "login";
-
-import logoImg from "@/assets/services/logo.png";
 
 const QamqorLogo = () => (
   <div className="flex flex-col items-center gap-1 mb-8">

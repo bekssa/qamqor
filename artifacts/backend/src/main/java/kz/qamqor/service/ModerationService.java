@@ -6,8 +6,8 @@ import kz.qamqor.entity.User;
 import kz.qamqor.exception.AppException;
 import kz.qamqor.repository.ModerationReportRepository;
 import kz.qamqor.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,12 +16,22 @@ import java.util.List;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ModerationService {
 
     private final ModerationReportRepository reportRepository;
     private final UserRepository userRepository;
     private final ChatService chatService;
+    private final NotificationService notificationService;
+
+    public ModerationService(ModerationReportRepository reportRepository,
+                             UserRepository userRepository,
+                             @Lazy ChatService chatService,
+                             NotificationService notificationService) {
+        this.reportRepository = reportRepository;
+        this.userRepository = userRepository;
+        this.chatService = chatService;
+        this.notificationService = notificationService;
+    }
 
     @Transactional
     public ModerationReport createReport(String senderId, String chatId, String messageText,
@@ -58,40 +68,68 @@ public class ModerationService {
 
     public List<ModerationReportDto> getAllReports() {
         return reportRepository.findAllByOrderByCreatedAtDesc().stream()
-            .map(ModerationReportDto::from).toList();
+            .map(r -> {
+                boolean blocked = userRepository.findById(r.getSenderId())
+                    .map(User::isBlocked).orElse(false);
+                return ModerationReportDto.from(r, blocked);
+            }).toList();
     }
 
     public List<ModerationReportDto> getPendingReports() {
         return reportRepository.findAllByStatusOrderByCreatedAtDesc(ModerationReport.Status.PENDING)
-            .stream().map(ModerationReportDto::from).toList();
+            .stream().map(r -> {
+                boolean blocked = userRepository.findById(r.getSenderId())
+                    .map(User::isBlocked).orElse(false);
+                return ModerationReportDto.from(r, blocked);
+            }).toList();
     }
 
     @Transactional
     public ModerationReportDto markReviewed(String reportId) {
         ModerationReport r = find(reportId);
         r.setStatus(ModerationReport.Status.REVIEWED);
-        return ModerationReportDto.from(reportRepository.save(r));
+        ModerationReport saved = reportRepository.save(r);
+        boolean blocked = userRepository.findById(saved.getSenderId()).map(User::isBlocked).orElse(false);
+        return ModerationReportDto.from(saved, blocked);
     }
 
     @Transactional
     public ModerationReportDto dismiss(String reportId) {
         ModerationReport r = find(reportId);
         r.setStatus(ModerationReport.Status.DISMISSED);
-        return ModerationReportDto.from(reportRepository.save(r));
+        ModerationReport saved = reportRepository.save(r);
+        boolean blocked = userRepository.findById(saved.getSenderId()).map(User::isBlocked).orElse(false);
+        return ModerationReportDto.from(saved, blocked);
     }
 
-    /** Открыть/найти чат между admin и нарушителем */
     @Transactional
     public ModerationReportDto openAdminChat(String reportId, String adminId) {
         ModerationReport r = find(reportId);
         if (r.getAdminChatId() != null) {
-            // Already exists
-            return ModerationReportDto.from(r);
+            boolean blocked = userRepository.findById(r.getSenderId()).map(User::isBlocked).orElse(false);
+            return ModerationReportDto.from(r, blocked);
         }
         var chat = chatService.findOrCreateChat(adminId, r.getSenderId());
         r.setAdminChatId(chat.id());
         r.setStatus(ModerationReport.Status.REVIEWED);
-        return ModerationReportDto.from(reportRepository.save(r));
+        ModerationReport saved = reportRepository.save(r);
+        boolean blocked = userRepository.findById(saved.getSenderId()).map(User::isBlocked).orElse(false);
+        return ModerationReportDto.from(saved, blocked);
+    }
+
+    @Transactional
+    public ModerationReportDto blockUser(String reportId, String adminId) {
+        ModerationReport r = find(reportId);
+        User user = userRepository.findById(r.getSenderId())
+            .orElseThrow(() -> new AppException("User not found", HttpStatus.NOT_FOUND));
+
+        user.setBlocked(true);
+        userRepository.save(user);
+
+        notificationService.save(user.getId(), "USER_BLOCKED", null, null, "Администратор");
+
+        log.info("[MOD] User {} blocked by admin {} via report {}", user.getId(), adminId, reportId);
+        return ModerationReportDto.from(r, true);
     }
 
     private ModerationReport find(String id) {

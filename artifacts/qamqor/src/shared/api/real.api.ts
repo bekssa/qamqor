@@ -120,7 +120,7 @@ export class RealKamkorApi implements IKamkorApi {
     private mapUser(r: {
         id: string; email: string; name: string; firstName?: string; lastName?: string;
         phone: string; avatarUrl: string; role: string; rating: number;
-        birthDate?: string; city?: string; categories?: string[]; aboutMe?: string;
+        birthDate?: string; city?: string; categories?: string[]; aboutMe?: string; blocked?: boolean;
     }) {
         return {
             id: r.id,
@@ -136,6 +136,7 @@ export class RealKamkorApi implements IKamkorApi {
             city: r.city,
             categories: r.categories ?? [],
             aboutMe: r.aboutMe,
+            blocked: r.blocked ?? false,
         };
     }
 
@@ -372,5 +373,9 @@ export class RealKamkorApi implements IKamkorApi {
 
     async openAdminChat(reportId: string): Promise<ModerationReport> {
         return this.fetchApi<ModerationReport>(`/admin/moderation/reports/${reportId}/open-chat`, { method: 'POST' });
+    }
+
+    async blockUserFromReport(reportId: string): Promise<ModerationReport> {
+        return this.fetchApi<ModerationReport>(`/admin/moderation/reports/${reportId}/block-user`, { method: 'POST' });
     }
 }

@@ -671,6 +671,8 @@ function SuccessModal({ onClose }: { onClose: () => void }) {
 /* ─────────────── create-request tab ─────────────── */
 function CreateRequestTab({ userId: _userId, version }: { userId: string; version?: number }) {
   const { t } = useLanguage();
+  const { currentUser } = useAuth();
+  const isBlocked = currentUser?.blocked ?? false;
   const { allApproved, missingDocs, pendingDocs } = useDocAccess();
   const [selectedService, setSelectedService] = useState("");
   const [description, setDescription] = useState("");
@@ -737,8 +739,23 @@ function CreateRequestTab({ userId: _userId, version }: { userId: string; versio
     <div className="space-y-4">
       <h2 className="text-base font-bold text-gray-800">{t("dashboard.createTitle")}</h2>
 
+      {/* Blocked banner */}
+      {isBlocked && (
+        <div className="rounded-2xl px-5 py-4 flex items-start gap-3" style={{ background: "#FEE2E2", border: "1px solid #FECACA" }}>
+          <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="#EF4444" strokeWidth="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+          </svg>
+          <div>
+            <p className="text-xs font-bold" style={{ color: "#B91C1C" }}>Аккаунт заблокирован</p>
+            <p className="text-[11px] mt-0.5" style={{ color: "#DC2626" }}>
+              Администратор заблокировал ваш аккаунт. Создание и принятие заявок недоступно.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Doc access banner */}
-      {!allApproved && missingDocs.length > 0 && (
+      {!isBlocked && !allApproved && missingDocs.length > 0 && (
         <div className="rounded-2xl px-5 py-4 flex items-start gap-3" style={{ background: "#FFFBEB", border: "1px solid #FDE68A" }}>
           <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="#D97706" strokeWidth="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" strokeWidth="2" /><line x1="12" y1="17" x2="12.01" y2="17" strokeWidth="3" /></svg>
           <div>
@@ -818,10 +835,10 @@ function CreateRequestTab({ userId: _userId, version }: { userId: string; versio
             onSelect={(addr, c) => { setAddress(addr); setCity(c); setShowAddressPicker(false); }}
           />
         )}
-        <button onClick={allApproved ? handleCreate : undefined}
-          disabled={!allApproved}
+        <button onClick={allApproved && !isBlocked ? handleCreate : undefined}
+          disabled={!allApproved || isBlocked}
           className="px-5 py-2.5 text-white text-xs font-bold rounded-xl transition-opacity shadow-sm"
-          style={{ background: allApproved ? GREEN : "#9ca3af", cursor: allApproved ? "pointer" : "not-allowed", opacity: allApproved ? 1 : 0.7 }}>
+          style={{ background: (allApproved && !isBlocked) ? GREEN : "#9ca3af", cursor: (allApproved && !isBlocked) ? "pointer" : "not-allowed", opacity: (allApproved && !isBlocked) ? 1 : 0.7 }}>
           {t("dashboard.createBtn")}
         </button>
       </div>
@@ -1440,6 +1457,8 @@ function HelperDashboard({ user, onOpenChat, cancelledRequestId, declinedRequest
   activeReqsVersion?: number;
 }) {
   const { t } = useLanguage();
+  const { currentUser } = useAuth();
+  const isBlocked = currentUser?.blocked ?? false;
   const { allApproved, missingDocs, pendingDocs } = useDocAccess();
   const [activeReqs, setActiveReqs] = useState<HelperRequest[]>([]);
   const [availableReqs, setAvailableReqs] = useState<HelperRequest[]>([]);
@@ -1622,7 +1641,18 @@ function HelperDashboard({ user, onOpenChat, cancelledRequestId, declinedRequest
             )}
           </div>
         </div>
-        <HelperAvailableTable reqs={sortedAndFilteredAvailableReqs} onChat={handleChat} onAccept={handleAccept} responseStatuses={responseStatuses} loadingRespondId={loadingRespondId} canRespond={allApproved} />
+        {isBlocked && (
+          <div className="mx-4 mb-2 rounded-xl px-4 py-3 flex items-start gap-3" style={{ background: "#FEE2E2", border: "1px solid #FECACA" }}>
+            <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="#EF4444" strokeWidth="2" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+            </svg>
+            <div>
+              <p className="text-xs font-bold" style={{ color: "#B91C1C" }}>Аккаунт заблокирован</p>
+              <p className="text-[11px] mt-0.5" style={{ color: "#DC2626" }}>Откликнуться на заявки недоступно.</p>
+            </div>
+          </div>
+        )}
+        <HelperAvailableTable reqs={sortedAndFilteredAvailableReqs} onChat={handleChat} onAccept={handleAccept} responseStatuses={responseStatuses} loadingRespondId={loadingRespondId} canRespond={!isBlocked && allApproved} />
       </div>
 
       {completingId !== null && (
@@ -2001,6 +2031,8 @@ function mapBackendNotification(n: { id: string; type: string; requestId: string
     return { ...base, type: "invite_declined", helperName: n.actorName ?? "" };
   if (n.type === "DOC_REVIEWED")
     return { ...base, type: "doc_reviewed", helperName: n.actorName ?? "", service: n.requestTitle };
+  if (n.type === "USER_BLOCKED")
+    return { ...base, type: "user_blocked", helperName: n.actorName ?? "Администратор" };
   return { ...base, type: "accepted" };
 }
 
@@ -2672,7 +2704,7 @@ function FindHelpersTab({ userId: _userId }: { userId: string }) {
 /* ─────────────── notifications tab ─────────────── */
 interface NotifItem {
   id: string | number;
-  type: "accepted" | "new_response" | "reminder" | "rejected" | "message" | "cancelled" | "response_accepted" | "response_declined" | "request_completed" | "new_invite" | "invite_accepted" | "invite_declined" | "doc_reviewed";
+  type: "accepted" | "new_response" | "reminder" | "rejected" | "message" | "cancelled" | "response_accepted" | "response_declined" | "request_completed" | "new_invite" | "invite_accepted" | "invite_declined" | "doc_reviewed" | "user_blocked";
   time: string;
   timestamp: string;
   helperName?: string;
@@ -3284,6 +3316,25 @@ function NotifCard({ n, onView, onAcceptResponse, onDeclineResponse, processingR
     );
   }
 
+  if (n.type === "user_blocked") {
+    return (
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FEE2E2" }}>
+          <svg className="w-4 h-4" fill="none" stroke="#EF4444" strokeWidth="2.5" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-gray-900">Аккаунт заблокирован</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">
+            Администратор заблокировал ваш аккаунт. Создание и принятие заявок недоступно.
+          </p>
+        </div>
+        <span className="text-[10px] text-gray-400 shrink-0">{n.time}</span>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -3538,7 +3589,11 @@ function DocumentsView() {
     api.getMyDocuments().then((list: any[]) => setDocs(list)).catch(() => {});
   }, []);
 
-  const getDoc = (type: DocType) => docs.find(d => d.documentType === type) ?? null;
+  const getDoc = (type: DocType) => {
+    const matches = docs.filter(d => d.documentType === type);
+    if (matches.length === 0) return null;
+    return matches.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())[0];
+  };
 
   const handleUploadClick = (type: DocType) => {
     setError(null);
@@ -3666,15 +3721,25 @@ function useDocAccess() {
   useEffect(() => {
     api.getMyDocuments().then((list: any[]) => setDocs(list)).catch(() => {});
   }, []);
-  const approvedTypes = new Set(docs.filter(d => d.status === "APPROVED").map(d => d.documentType));
+
+  // Deduplicate: keep only the latest doc per type
+  const latestByType = DOC_TYPES.reduce<Record<string, UserDoc>>((acc, dt) => {
+    const matches = docs.filter(d => d.documentType === dt.key);
+    if (matches.length > 0) {
+      acc[dt.key] = matches.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())[0];
+    }
+    return acc;
+  }, {});
+
+  const approvedTypes = new Set(Object.values(latestByType).filter(d => d.status === "APPROVED").map(d => d.documentType));
   const allApproved = DOC_TYPES.every(dt => approvedTypes.has(dt.key as DocType));
   const missingDocs = DOC_TYPES.filter(dt => {
-    const d = docs.find(doc => doc.documentType === dt.key);
+    const d = latestByType[dt.key];
     if (!d) return true;
     if (d.status === "REJECTED") return true;
     return false;
   });
-  const pendingDocs = DOC_TYPES.filter(dt => docs.find(doc => doc.documentType === dt.key)?.status === "PENDING");
+  const pendingDocs = DOC_TYPES.filter(dt => latestByType[dt.key]?.status === "PENDING");
   return { allApproved, missingDocs, pendingDocs, docs };
 }
 
@@ -4095,6 +4160,11 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
               setRealtimeNotifs(prev => [{
                 id: Date.now(), type: "doc_reviewed" as const,
                 service: data.requestTitle, helperName: data.volunteerName, time, timestamp: ts,
+              }, ...prev]);
+            } else if (data.type === "USER_BLOCKED") {
+              setRealtimeNotifs(prev => [{
+                id: Date.now(), type: "user_blocked" as const,
+                helperName: "Администратор", time, timestamp: ts,
               }, ...prev]);
             }
           } catch { /* ignore malformed messages */ }

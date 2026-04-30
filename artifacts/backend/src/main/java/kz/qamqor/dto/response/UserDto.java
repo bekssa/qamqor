@@ -19,7 +19,8 @@ public record UserDto(
     String aboutMe,
     List<String> categories,
     Double rating,
-    Instant createdAt
+    Instant createdAt,
+    boolean blocked
 ) {
     public static UserDto from(User user, Double rating) {
         List<String> cats = user.getCategories() == null ? List.of()
@@ -38,7 +39,8 @@ public record UserDto(
             user.getAboutMe(),
             cats,
             rating,
-            user.getCreatedAt()
+            user.getCreatedAt(),
+            user.isBlocked()
         );
     }
 }

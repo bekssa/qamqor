@@ -74,4 +74,5 @@ export interface IKamkorApi {
     reviewModerationReport(id: string): Promise<ModerationReport>;
     dismissModerationReport(id: string): Promise<ModerationReport>;
     openAdminChat(reportId: string): Promise<ModerationReport>;
+    blockUserFromReport(reportId: string): Promise<ModerationReport>;
 }

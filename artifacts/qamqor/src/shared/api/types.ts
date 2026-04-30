@@ -14,6 +14,7 @@ export interface User {
     firstName?: string;
     lastName?: string;
     city?: string;
+    blocked?: boolean;
 }
 
 export type RequestStatus = "open" | "in_progress" | "completed" | "cancelled";
@@ -68,6 +69,7 @@ export interface ModerationReport {
     status: "PENDING" | "REVIEWED" | "DISMISSED";
     adminChatId: string | null;
     createdAt: string;
+    senderBlocked: boolean;
 }
 
 export interface Message {
