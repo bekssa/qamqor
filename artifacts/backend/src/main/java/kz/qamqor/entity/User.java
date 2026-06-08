@@ -41,7 +41,7 @@ public class User {
     @Column(nullable = false)
     private boolean verified = false;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "boolean not null default false")
     private boolean blocked = false;
 
     @CreationTimestamp

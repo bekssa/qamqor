@@ -17,6 +17,7 @@ export interface IKamkorApi {
 
     // Users / Volunteers API
     getVolunteers(): Promise<User[]>;
+    getAllUsers(): Promise<User[]>;
     getUserById(id: string): Promise<User | null>;
 
     // Profile API

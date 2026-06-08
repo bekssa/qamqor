@@ -99,6 +99,11 @@ export class MockKamkorApi implements IKamkorApi {
         return mockUsers.filter(u => u.role === 'volunteer');
     }
 
+    async getAllUsers(): Promise<User[]> {
+        await delay();
+        return mockUsers;
+    }
+
     async getUserById(id: string): Promise<User | null> {
         await delay();
         return mockUsers.find(u => u.id === id) || null;

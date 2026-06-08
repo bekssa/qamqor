@@ -68,18 +68,21 @@ public class GeminiModerationService {
                     put("temperature", 0);
                     put("maxOutputTokens", 512);
                     put("responseMimeType", "application/json");
+                    put("thinkingConfig", new java.util.LinkedHashMap<>() {{
+                        put("thinkingBudget", 0);
+                    }});
                 }});
             }});
-            String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + apiKey;
+            String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
 
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                .timeout(Duration.ofSeconds(25))
+                .timeout(Duration.ofSeconds(20))
                 .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = sendWithRetry(request, 2);
 
             if (response.statusCode() != 200) {
                 log.warn("[MODERATION] Gemini returned {}: {}", response.statusCode(), response.body());
@@ -108,6 +111,16 @@ public class GeminiModerationService {
             log.warn("[MODERATION] Gemini check failed: {}", e.getMessage());
             return new ModerationResult(List.of(), "");
         }
+    }
+
+    private HttpResponse<String> sendWithRetry(HttpRequest request, int maxRetries) throws Exception {
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        for (int attempt = 1; attempt <= maxRetries && response.statusCode() == 503; attempt++) {
+            log.warn("[MODERATION] Gemini 503, retry {}/{}", attempt, maxRetries);
+            Thread.sleep(1000L * attempt);
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        }
+        return response;
     }
 
     private String extractJson(String raw) {

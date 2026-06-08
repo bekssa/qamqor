@@ -6,7 +6,7 @@ import { useAuth } from "@features/auth/model/context";
 import { UserDocument, ModerationReport } from "@shared/api/types";
 import {
   ShieldCheck, BarChart2, Gavel, LogOut, FileText,
-  CheckCircle, XCircle, Clock, ChevronRight, Download, Eye,
+  CheckCircle, XCircle, Clock, ChevronRight, ChevronDown, Download, Eye,
   MessageSquare, Send, ArrowLeft, AlertTriangle,
 } from "lucide-react";
 import logoImg from "@/assets/services/logo.png";
@@ -291,16 +291,82 @@ function VerificationSection() {
 
 /* ── statistics section ── */
 function StatisticsSection() {
+  const [users, setUsers] = useState<{ id: string; name: string; email?: string; firstName?: string; lastName?: string }[]>([]);
+  const [selectedEmail, setSelectedEmail] = useState<string>("");
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    api.getAllUsers().then(list => setUsers(list)).catch(() => {});
+  }, []);
+
+  // TODO: verify exact Power BI table/column name (currently using users/email)
+  const pbiBase = "https://app.powerbi.com/reportEmbed?reportId=863379d6-a7f8-4809-a3f7-4dd8f18daad6&autoAuth=true&ctid=347fd89f-696a-49ca-9f8b-9724f5750471";
+  const pbiSrc = selectedEmail
+    ? `${pbiBase}&filter=${encodeURIComponent(`users/email eq '${selectedEmail}'`)}`
+    : pbiBase;
+
+  const displayLabel = (u: typeof users[number]) =>
+    [u.lastName, u.firstName].filter(Boolean).join(" ") || u.name || u.email || u.id;
+
+  const selectedUser = users.find(u => u.email === selectedEmail);
+
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <iframe
-        title="диплом"
-        width="100%"
-        height="541"
-        src="https://app.powerbi.com/reportEmbed?reportId=9f87d303-055b-415c-a029-055439ae653a&autoAuth=true&ctid=347fd89f-696a-49ca-9f8b-9724f5750471"
-        frameBorder={0}
-        allowFullScreen
-      />
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-semibold text-gray-600 shrink-0">Фильтр по пользователю:</span>
+          <div className="relative w-72">
+            <button
+              onClick={() => setOpen(v => !v)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs text-left outline-none hover:border-blue-400 transition-all"
+            >
+              <span className={selectedUser ? "text-gray-800 font-medium" : "text-gray-400"}>
+                {selectedUser ? displayLabel(selectedUser) : "Все пользователи"}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            </button>
+            {open && (
+              <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto">
+                <button
+                  onClick={() => { setSelectedEmail(""); setOpen(false); }}
+                  className="w-full text-left px-3 py-2.5 text-xs hover:bg-gray-50 transition-colors"
+                  style={!selectedEmail ? { color: BLUE, fontWeight: 600 } : { color: "#374151" }}>
+                  Все пользователи
+                </button>
+                {users.map(u => (
+                  <button
+                    key={u.id}
+                    onClick={() => { setSelectedEmail(u.email ?? ""); setOpen(false); }}
+                    className="w-full text-left px-3 py-2.5 text-xs hover:bg-gray-50 transition-colors border-t border-gray-50"
+                    style={selectedEmail === u.email ? { color: BLUE, fontWeight: 600 } : { color: "#374151" }}>
+                    <span className="block font-medium">{displayLabel(u)}</span>
+                    {u.email && <span className="block text-[10px] text-gray-400">{u.email}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {selectedEmail && (
+            <button
+              onClick={() => setSelectedEmail("")}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
+              Сбросить
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <iframe
+          key={pbiSrc}
+          title="diplomadash"
+          width="1140"
+          height="541.25"
+          src={pbiSrc}
+          frameBorder={0}
+          allowFullScreen
+        />
+      </div>
     </div>
   );
 }

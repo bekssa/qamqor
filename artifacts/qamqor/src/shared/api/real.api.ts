@@ -285,6 +285,10 @@ export class RealKamkorApi implements IKamkorApi {
         return this.fetchApi<User[]>('/users?role=volunteer');
     }
 
+    async getAllUsers(): Promise<User[]> {
+        return this.fetchApi<User[]>('/users');
+    }
+
     async getUserById(id: string): Promise<User | null> {
         return this.fetchApi<User | null>(`/users/${id}`);
     }

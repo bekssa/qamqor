@@ -4048,6 +4048,171 @@ function AccountSettingsTab({ onDirtyChange, settingsSaveRef }: {
   );
 }
 
+/* ─────────────── support AI chat ─────────────── */
+interface SupportChatMessage {
+  role: "user" | "ai";
+  text: string;
+  ts: number;
+}
+
+const SUPPORT_CHAT_KEY = "qamqor-support-chat-v1";
+const SUPPORT_API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1";
+const QUICK_QUESTIONS = [
+  "Что такое платформа Qamqor?",
+  "Как создать заявку на помощь?",
+  "Как стать волонтёром?",
+  "Как связаться с поддержкой?",
+];
+
+function SupportChat() {
+  const [messages, setMessages] = useState<SupportChatMessage[]>(() => {
+    try { return JSON.parse(localStorage.getItem(SUPPORT_CHAT_KEY) || "[]"); }
+    catch { return []; }
+  });
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem(SUPPORT_CHAT_KEY, JSON.stringify(messages));
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const sendMessage = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || loading) return;
+    setMessages(prev => [...prev, { role: "user", text: trimmed, ts: Date.now() }]);
+    setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("qamqor-token");
+      const res = await fetch(`${SUPPORT_API_BASE}/ai/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message: trimmed }),
+      });
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: "ai", text: data.reply || "Нет ответа.", ts: Date.now() }]);
+    } catch {
+      setMessages(prev => [...prev, { role: "ai", text: "Произошла ошибка. Напишите администратору: @uraaasdu", ts: Date.now() }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 112) + "px";
+  };
+
+  return (
+    <div className="flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden" style={{ height: "calc(100vh - 160px)", maxHeight: 700 }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-white shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+            <Headphones className="w-4 h-4 text-blue-500" />
+          </div>
+          <div>
+            <p className="font-semibold text-[#2E486D] text-sm">ИИ-помощник</p>
+            <p className="text-xs text-gray-400">Отвечает на вопросы о платформе Qamqor</p>
+          </div>
+        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={() => { setMessages([]); localStorage.removeItem(SUPPORT_CHAT_KEY); }}
+            className="text-xs text-gray-400 hover:text-red-400 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-50"
+          >
+            Очистить
+          </button>
+        )}
+      </div>
+
+      {/* Messages area */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        {messages.length === 0 && !loading && (
+          <div className="flex flex-col items-center justify-center h-full gap-6 pb-4">
+            <div className="text-center">
+              <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-3">
+                <Headphones className="w-6 h-6 text-blue-400" />
+              </div>
+              <p className="font-semibold text-[#2E486D] text-base">Чем могу помочь?</p>
+              <p className="text-sm text-gray-400 mt-1">Задайте вопрос о платформе Qamqor</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
+              {QUICK_QUESTIONS.map(q => (
+                <button
+                  key={q}
+                  onClick={() => sendMessage(q)}
+                  className="text-left px-4 py-3 rounded-xl border border-blue-100 bg-blue-50 hover:bg-blue-100 text-sm text-[#2E486D] font-medium transition-colors"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map(msg => (
+          <div key={msg.ts} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div
+              className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                msg.role === "user"
+                  ? "bg-blue-500 text-white rounded-br-sm"
+                  : "bg-gray-100 text-gray-800 rounded-bl-sm"
+              }`}
+            >
+              {msg.text}
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3.5 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "160ms" }} />
+              <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "320ms" }} />
+            </div>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div className="px-4 py-3 border-t border-gray-100 flex gap-2 items-end shrink-0">
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={handleTextareaChange}
+          onKeyDown={e => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
+          }}
+          placeholder="Задайте вопрос..."
+          rows={1}
+          disabled={loading}
+          className="flex-1 resize-none rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all disabled:opacity-60"
+          style={{ overflowY: "hidden" }}
+        />
+        <button
+          onClick={() => sendMessage(input)}
+          disabled={!input.trim() || loading}
+          className="w-10 h-10 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors shrink-0"
+        >
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────── coming soon placeholder ─────────────── */
 function ComingSoon() {
   const { t } = useLanguage();
@@ -4059,12 +4224,13 @@ function ComingSoon() {
 }
 
 /* ─────────────── main content area ─────────────── */
-function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName, openedChat, setOpenedChat, onSettingsDirtyChange, settingsSaveRef }: {
+function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName, userEmail, openedChat, setOpenedChat, onSettingsDirtyChange, settingsSaveRef }: {
   activeNav: NavKey;
   setActiveNav: (nav: NavKey) => void;
   userId: string;
   userRole: string;
   firstName: string;
+  userEmail: string;
   openedChat: Chat | null;
   setOpenedChat: (chat: Chat | null) => void;
   onSettingsDirtyChange: (dirty: boolean) => void;
@@ -4264,18 +4430,25 @@ function DashboardContent({ activeNav, setActiveNav, userId, userRole, firstName
     ? <MyVolunteerRequestsContent cancelledRequestId={cancelledRequestId} />
     : <MyRequestsContent userId={userId} />;
 
-  if (activeNav === "statistics") return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <iframe
-        title="диплом"
-        width="100%"
-        height="541"
-        src="https://app.powerbi.com/reportEmbed?reportId=9f87d303-055b-415c-a029-055439ae653a&autoAuth=true&ctid=347fd89f-696a-49ca-9f8b-9724f5750471"
-        frameBorder={0}
-        allowFullScreen
-      />
-    </div>
-  );
+  if (activeNav === "statistics") {
+    // TODO: verify exact Power BI table/column name (currently using users/email)
+    const pbiFilter = encodeURIComponent(`users/email eq '${userEmail}'`);
+    const pbiSrc = `https://app.powerbi.com/reportEmbed?reportId=863379d6-a7f8-4809-a3f7-4dd8f18daad6&autoAuth=true&ctid=347fd89f-696a-49ca-9f8b-9724f5750471&filter=${pbiFilter}`;
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <iframe
+          title="diplomadash"
+          width="1140"
+          height="541.25"
+          src={pbiSrc}
+          frameBorder={0}
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+
+  if (activeNav === "support") return <SupportChat />;
 
   if (activeNav !== "dashboard") return <ComingSoon />;
 
@@ -4416,6 +4589,7 @@ function DashboardPage() {
             userId={currentUser.id}
             userRole={currentUser.role}
             firstName={currentUser.firstName}
+            userEmail={currentUser.email}
             openedChat={openedChat}
             setOpenedChat={setOpenedChat}
             onSettingsDirtyChange={setSettingsDirty}
